@@ -8,6 +8,9 @@ jobs:
   publish:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
@@ -15,6 +18,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
 
       - run: npm ci
 
@@ -27,21 +31,24 @@ jobs:
 
       - run: npm run test --workspace=packages/server
 
-      # Option A: npm publish (only @fi-pool/cli)
-      # - name: Publish CLI package
-      #   run: |
-      #     npm publish --workspace=packages/cli
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # Publish to npm
+      - name: Publish @fi-pool/server
+        run: npm publish --workspace=packages/server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # Option B: Docker build and push to ghcr.io
+      - name: Publish @fi-pool/cli
+        run: npm publish --workspace=packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Docker build (optional)
       # - name: Build Docker
       #   run: docker build -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} .
-
       # - name: Push Docker
       #   run: docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}
 
-      # Create GitHub Release
+      # GitHub Release
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
