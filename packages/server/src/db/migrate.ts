@@ -36,7 +36,10 @@ export function ensureDatabase(): ReturnType<typeof initDatabase> {
     migrate(db, { migrationsFolder });
     console.log('[db] 迁移执行完成');
   } catch (err) {
-    console.warn('[db] 迁移执行失败（可能是首次运行或迁移已是最新）:', (err as Error).message);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[db] 迁移失败:', msg);
+    console.error('[db] 数据库处于不一致状态，终止进程');
+    process.exit(1);
   }
 
   return db;

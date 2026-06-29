@@ -1,0 +1,17 @@
+{
+  "manifest_version": 1,
+  "id": "fi-pool-manager",
+  "name": "Fi-Pool-Manager",
+  "version": "0.2.0-alpha.1",
+  "description": "A股股池管理 — 管理自定义股票池、获取日行情数据、进行技术分析，并通过多角色 LLM 分析产出投资建议报告",
+  "author": "kuaizhongqiang",
+  "homepage": "https://github.com/kuaizhongqiang/Fi-Pool-Manager",
+  "tags": ["a股", "股票", "量化分析", "技术分析", "llm"],
+  "entry": "./dist/index.js",
+  "capabilities": {
+    "tools": true
+  },
+  "permissions": {
+    "network": ["127.0.0.1:1234", "web.ifzq.gtimg.cn", "web.sqt.gtimg.cn", "dashscope.aliyuncs.com"]
+  }
+}

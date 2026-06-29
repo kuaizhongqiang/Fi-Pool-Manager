@@ -21,8 +21,8 @@ import { eq, and, between, sql } from 'drizzle-orm';
 /** 上一次 HTTP 请求的时间戳，用于频率控制 */
 let lastFetchTime = 0;
 
-/** 两次请求之间的最小间隔（毫秒） */
-const MIN_FETCH_INTERVAL = 1200;
+/** 两次请求之间的最小间隔（毫秒），从 .env DATA_FETCH_INTERVAL_MS 读取，默认 1200ms */
+const MIN_FETCH_INTERVAL = Math.max(200, parseInt(process.env.DATA_FETCH_INTERVAL_MS || '1200', 10));
 
 /**
  * 确保两次请求之间满足最小间隔。

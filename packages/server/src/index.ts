@@ -61,6 +61,22 @@ export * as embeddingService from './services/embedding.js';
 
 export { runFullPipeline, runLocalAnalysis, stage1FetchData } from './services/pipeline.js';
 
-// ─── 版本号 ────────────────────────────────────────────────────
+// ─── 版本号（从 package.json 读取，保持与发布版本同步）──────
 
-export const VERSION = '0.1.0';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const pkgPath = resolve(__dirname, '../package.json');
+
+let VERSION = '0.0.0';
+try {
+  const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
+  VERSION = pkg.version || VERSION;
+} catch {
+  // 无法读取时保持默认
+}
+
+export { VERSION };

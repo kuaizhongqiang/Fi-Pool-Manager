@@ -32,3 +32,6 @@ npm-debug.log*
 
 # Config
 .mcp.json
+
+# Generated review files
+PM_REVIEW.md
