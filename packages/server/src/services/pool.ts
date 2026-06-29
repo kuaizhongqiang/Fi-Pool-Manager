@@ -119,7 +119,15 @@ export async function addStocks(poolId: number, stockCodes: string[]) {
 
   const db = getDatabase();
 
-  // 查询已存在于该股池中的股票
+  // 1. 自动补全 stock 表中不存在的股票（避免 FK 约束失败）
+  for (const code of stockCodes) {
+    const exists = db.select({ code: stock.code }).from(stock).where(eq(stock.code, code)).get();
+    if (!exists) {
+      db.insert(stock).values({ code, name: '', currentPrice: 0 }).run();
+    }
+  }
+
+  // 2. 查询已存在于该股池中的股票
   const existing = db
     .select({ stockCode: poolStock.stockCode })
     .from(poolStock)

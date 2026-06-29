@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Fi-Pool-Manager CLI — A股股池管理命令行工具",
   "type": "module",
   "main": "dist/index.js",
