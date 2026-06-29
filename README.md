@@ -31,15 +31,14 @@ A 股股池管理服务端。管理自定义股票池、获取日行情数据、
 
 ### 安装
 
-**方式一：npm 全局安装（推荐）**
+**npm 全局安装（推荐）**
 
 ```bash
 npm install -g fi-pool-cli
-# 之后可以直接使用 fi-pool 命令
 fi-pool help
 ```
 
-**方式二：从源码运行**
+**从源码运行**
 
 ```bash
 git clone https://github.com/kuaizhongqiang/Fi-Pool-Manager.git
