@@ -265,7 +265,7 @@ config（独立表，键值存储）
 | 表 | 索引 | 作用 |
 |----|------|------|
 | pool | name | 按名称查找 |
-| pool | signal | 按信号筛选 |
+| pool | pool_signal | 按信号筛选 |
 | pool_stock | pool_id | 查池中股票 |
 | pool_stock | stock_code | 查股票属于哪些池 |
 | daily_info | code, date, code+date | 行情查询 |

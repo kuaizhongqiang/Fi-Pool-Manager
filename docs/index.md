@@ -27,3 +27,4 @@
 | [流水线实现设计](pipeline-implementation.md) | 各阶段流程、Prompt 框架、上下文控制 |
 | [配置与部署](deployment.md) | .env 配置项、部署结构、系统要求 |
 | [测试策略](test-strategy.md) | 测试框架、范围和命令 |
+| [开发计划](project-plan.md) | 8 个迭代阶段及交付物 |
