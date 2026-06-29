@@ -1,6 +1,6 @@
 {
   "name": "@fi-pool/server",
-  "version": "0.2.0-alpha.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Fi-Pool-Manager 核心服务：数据获取、分析引擎、LLM 调用、向量检索",
   "type": "module",

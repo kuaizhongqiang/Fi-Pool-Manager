@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.0] — 2026-06-29
+
+### 🎉 首个稳定版发布
+
+代码审查修复完成，CI/CD 流水线就绪，全量测试通过。
+
+### Features（同 Alpha）
+
+所有核心功能与 v0.2.0-alpha.1 相同。
+
+### Fixes（代码审查）
+
+- 迁移失败终止进程而非静默吞错
+- DATA_FETCH_INTERVAL_MS 从 .env 读取
+- 唯一约束 SELECT 预检替代字符串匹配
+- VERSION 从 package.json 动态读取
+- Pipeline 重构为类结构（1124 → 6 个独立方法）
+- Config 表与 process.env 双源同步
+- openclaw.json 插件清单
+- mkdirSync 错误处理 / 错误类型安全断言
+
+### CI/CD
+
+- 构建顺序修复（server → cli + plugin）
+- YAML 语法修复
+- 三工作流同步（ci / publish / release）
+
 ## [0.2.0-alpha.1] — 2026-06-29
 
 ### 🎉 首个 Alpha 发布
