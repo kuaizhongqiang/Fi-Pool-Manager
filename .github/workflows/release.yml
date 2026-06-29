@@ -32,8 +32,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build --workspaces
+      - name: Build packages (server first)
+        run: |
+          npm run build --workspace=packages/server
+          npm run build --workspace=packages/cli --workspace=packages/plugin
 
       - name: Run tests
         run: npm run test --workspace=packages/server

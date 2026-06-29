@@ -18,7 +18,12 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run build --workspaces
+      # Build in order: server → cli + plugin
+      - name: Build server
+        run: npm run build --workspace=packages/server
+
+      - name: Build cli + plugin
+        run: npm run build --workspace=packages/cli --workspace=packages/plugin
 
       - run: npm run test --workspace=packages/server
 

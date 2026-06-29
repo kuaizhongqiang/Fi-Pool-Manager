@@ -25,11 +25,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
-        run: npm run lint
+      - name: Build all packages (server first)
+        run: |
+          npm run build --workspace=packages/server
+          npm run build --workspace=packages/cli --workspace=packages/plugin
 
-      - name: Build
-        run: npm run build --workspaces
+      - name: Type check (needs build artifacts from previous step)
+        run: npm run lint
 
       - name: Run tests
         run: npm run test --workspace=packages/server
