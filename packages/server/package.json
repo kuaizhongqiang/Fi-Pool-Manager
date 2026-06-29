@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fi-Pool-Manager 核心服务：数据获取、技术分析、LLM 分析引擎、向量检索",
   "type": "module",
   "main": "dist/index.js",
@@ -17,7 +17,13 @@
     "type": "git",
     "url": "git+https://github.com/kuaizhongqiang/Fi-Pool-Manager.git"
   },
-  "keywords": ["a股", "股票", "量化分析", "技术分析", "llm"],
+  "keywords": [
+    "a股",
+    "股票",
+    "量化分析",
+    "技术分析",
+    "llm"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"

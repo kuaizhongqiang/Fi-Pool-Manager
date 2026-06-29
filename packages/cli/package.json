@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fi-Pool-Manager CLI — A股股池管理命令行工具",
   "type": "module",
   "main": "dist/index.js",
@@ -23,7 +23,13 @@
     "url": "https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues"
   },
   "homepage": "https://github.com/kuaizhongqiang/Fi-Pool-Manager#readme",
-  "keywords": ["a股", "股票", "量化分析", "技术分析", "cli"],
+  "keywords": [
+    "a股",
+    "股票",
+    "量化分析",
+    "技术分析",
+    "cli"
+  ],
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
