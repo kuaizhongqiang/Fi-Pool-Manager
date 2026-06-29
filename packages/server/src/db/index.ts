@@ -28,7 +28,11 @@ export function initDatabase(): ReturnType<typeof drizzle<typeof schema>> {
   const dbDir = dirname(dbPath);
 
   if (!existsSync(dbDir)) {
-    mkdirSync(dbDir, { recursive: true });
+    try {
+      mkdirSync(dbDir, { recursive: true });
+    } catch (err) {
+      throw new Error(`数据库目录创建失败: ${dbDir} — ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   sqliteInstance = new Database(dbPath);

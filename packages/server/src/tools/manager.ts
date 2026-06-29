@@ -12,6 +12,9 @@
  */
 
 import * as poolService from '../services/pool.js';
+import { getDatabase } from '../db/index.js';
+import { pool } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 /**
  * 创建新的股票池。
@@ -40,6 +43,12 @@ export async function createPool(
       return { success: false as const, error: { code: 'INVALID_PARAM', message: '股池名称不能为空' } };
     }
 
+    // 预检名称唯一性
+    const existing = getDatabase().select().from(pool).where(eq(pool.name, name.trim())).get();
+    if (existing) {
+      return { success: false as const, error: { code: 'INVALID_PARAM', message: `股池名称"${name}"已存在` } };
+    }
+
     const result = await poolService.createPool(name.trim(), desc?.trim());
     if (stockCodes && stockCodes.length > 0) {
       await poolService.addStocks(result.id, stockCodes);
@@ -47,9 +56,6 @@ export async function createPool(
     return { success: true as const, data: { id: result.id } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('UNIQUE') || message.includes('unique')) {
-      return { success: false as const, error: { code: 'INVALID_PARAM', message: `股池名称"${name}"已存在` } };
-    }
     return { success: false as const, error: { code: 'DB_ERROR', message } };
   }
 }
@@ -110,6 +116,14 @@ export async function updatePool(
       return { success: false as const, error: { code: 'INVALID_PARAM', message: '股池名称不能为空' } };
     }
 
+    // 预检名称唯一性（如需改名）
+    if (name !== undefined) {
+      const existing = getDatabase().select().from(pool).where(eq(pool.name, name.trim())).get();
+      if (existing && existing.id !== id) {
+        return { success: false as const, error: { code: 'INVALID_PARAM', message: `股池名称"${name}"已存在` } };
+      }
+    }
+
     const updateData: { name?: string; desc?: string } = {};
     if (name !== undefined) updateData.name = name.trim();
     if (desc !== undefined) updateData.desc = desc.trim();
@@ -122,9 +136,6 @@ export async function updatePool(
     return { success: true as const };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('UNIQUE') || message.includes('unique')) {
-      return { success: false as const, error: { code: 'INVALID_PARAM', message: `股池名称"${name}"已存在` } };
-    }
     return { success: false as const, error: { code: 'DB_ERROR', message } };
   }
 }

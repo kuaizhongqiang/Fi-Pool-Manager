@@ -397,728 +397,752 @@ e. 综合判断
 }`;
 }
 
-// ─── Stage 1: 数据获取 ──────────────────────────────────────────
+// ─── Pipeline 类 ─────────────────────────────────────────────────
 
-/**
- * Stage 1 — 数据获取
- *
- * 从腾讯财经接口获取最近 60 个交易日数据，
- * 写入 daily_info 表并更新 stock.current_price。
- *
- * @param code - 六位股票代码
- * @returns 最新交易日日期和记录数
- *
- * @throws 股票不存在或数据获取失败时抛出
- */
-export async function stage1FetchData(code: string): Promise<Stage1Result> {
-  // 验证股票存在
-  const stockInfo = await stockService.getStockByCode(code);
-  if (!stockInfo) {
-    throw new Error(`股票 ${code} 不存在，请先添加该股票`);
+export class Pipeline {
+  code: string;
+  sessionId: string;
+
+  constructor(code: string) {
+    this.code = code;
+    this.sessionId = sessionService.createSession();
   }
 
-  // 从腾讯财经获取 K 线数据
-  const ohlcvData = await dailyInfoService.fetchFromTencent(code);
-  if (!ohlcvData || ohlcvData.length === 0) {
-    throw new Error(`获取股票 ${code} 行情数据失败: 返回空数据`);
+  // ─── Stage 1: 数据获取 ──────────────────────────────────────────
+
+  /**
+   * Stage 1 — 数据获取
+   *
+   * 从腾讯财经接口获取最近 60 个交易日数据，
+   * 写入 daily_info 表并更新 stock.current_price。
+   *
+   * @returns 最新交易日日期和记录数
+   *
+   * @throws 股票不存在或数据获取失败时抛出
+   */
+  async stage1FetchData(): Promise<Stage1Result> {
+    // 验证股票存在
+    const stockInfo = await stockService.getStockByCode(this.code);
+    if (!stockInfo) {
+      throw new Error(`股票 ${this.code} 不存在，请先添加该股票`);
+    }
+
+    // 从腾讯财经获取 K 线数据
+    const ohlcvData = await dailyInfoService.fetchFromTencent(this.code);
+    if (!ohlcvData || ohlcvData.length === 0) {
+      throw new Error(`获取股票 ${this.code} 行情数据失败: 返回空数据`);
+    }
+
+    // 构造 upsert 记录
+    const records = ohlcvData.map((o) => ({
+      code: this.code,
+      date: o.date,
+      open: o.open,
+      high: o.high,
+      low: o.low,
+      close: o.close,
+      volume: o.volume,
+    }));
+
+    // 写入 daily_info 表
+    const count = await dailyInfoService.upsertDailyInfo(records);
+
+    // 更新股票最新价格
+    const latest = ohlcvData[ohlcvData.length - 1];
+    await stockService.upsertStock(this.code, stockInfo.name, latest.close);
+
+    return {
+      date: latest.date,
+      records: count,
+    };
   }
 
-  // 构造 upsert 记录
-  const records = ohlcvData.map((o) => ({
-    code,
-    date: o.date,
-    open: o.open,
-    high: o.high,
-    low: o.low,
-    close: o.close,
-    volume: o.volume,
-  }));
+  // ─── Stage 2: 客观报告（LLM）────────────────────────────────────
 
-  // 写入 daily_info 表
-  const count = await dailyInfoService.upsertDailyInfo(records);
+  /**
+   * Stage 2 — 客观报告（LLM）
+   *
+   * 基于最近 60 个交易日的行情数据和技术指标，
+   * 调用本地 LLM 生成客观分析报告。
+   *
+   * 报告包含结构化技术指标和文字摘要，
+   * 写入 daily_analysis_report 表并生成向量嵌入。
+   *
+   * @param date - 报告日期（yyyy-MM-dd）
+   * @returns 创建的客观报告信息
+   */
+  async stage2ObjectiveReport(date: string): Promise<Stage2Result> {
+    const db = getDatabase();
+    const { code, sessionId } = this;
 
-  // 更新股票最新价格
-  const latest = ohlcvData[ohlcvData.length - 1];
-  await stockService.upsertStock(code, stockInfo.name, latest.close);
+    // 1. 获取股票信息
+    const stockInfo = await stockService.getStockByCode(code);
+    if (!stockInfo) {
+      throw new Error(`股票 ${code} 不存在`);
+    }
 
-  return {
-    date: latest.date,
-    records: count,
-  };
-}
+    // 2. 获取日行情数据（最近 60 个交易日）
+    const allDailyData = await dailyInfoService.getDailyInfo(code);
+    if (allDailyData.length < 5) {
+      throw new Error(
+        `股票 ${code} 行情数据不足 (${allDailyData.length} 天，至少需要 5 天)`,
+      );
+    }
 
-// ─── Stage 2: 客观报告（LLM）────────────────────────────────────
+    const recentData = allDailyData.slice(-60);
+    const ohlcvData: OHLCV[] = recentData.map((d) => ({
+      date: d.date,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+      volume: d.volume,
+    }));
 
-/**
- * Stage 2 — 客观报告（LLM）
- *
- * 基于最近 60 个交易日的行情数据和技术指标，
- * 调用本地 LLM 生成客观分析报告。
- *
- * 报告包含结构化技术指标和文字摘要，
- * 写入 daily_analysis_report 表并生成向量嵌入。
- *
- * @param code      - 股票代码
- * @param date      - 报告日期（yyyy-MM-dd）
- * @param sessionId - LLM 会话 ID
- * @returns 创建的客观报告信息
- */
-export async function stage2ObjectiveReport(
-  code: string,
-  date: string,
-  sessionId: string,
-): Promise<Stage2Result> {
-  const db = getDatabase();
+    // 3. 获取前 3 个交易日的分析报告
+    const prevReports = db
+      .select({
+        summary: dailyAnalysisReport.summary,
+        indicators: dailyAnalysisReport.indicators,
+      })
+      .from(dailyAnalysisReport)
+      .where(
+        and(
+          eq(dailyAnalysisReport.code, code),
+          sql`${dailyAnalysisReport.date} < ${date}`,
+        ),
+      )
+      .orderBy(desc(dailyAnalysisReport.date))
+      .limit(3)
+      .all();
 
-  // 1. 获取股票信息
-  const stockInfo = await stockService.getStockByCode(code);
-  if (!stockInfo) {
-    throw new Error(`股票 ${code} 不存在`);
-  }
+    // 4. 计算技术指标和信号
+    const indicators = analysisService.computeIndicators(ohlcvData);
+    const signals = analysisService.computeSignals(ohlcvData);
 
-  // 2. 获取日行情数据（最近 60 个交易日）
-  const allDailyData = await dailyInfoService.getDailyInfo(code);
-  if (allDailyData.length < 5) {
-    throw new Error(
-      `股票 ${code} 行情数据不足 (${allDailyData.length} 天，至少需要 5 天)`,
-    );
-  }
-
-  const recentData = allDailyData.slice(-60);
-  const ohlcvData: OHLCV[] = recentData.map((d) => ({
-    date: d.date,
-    open: d.open,
-    high: d.high,
-    low: d.low,
-    close: d.close,
-    volume: d.volume,
-  }));
-
-  // 3. 获取前 3 个交易日的分析报告
-  const prevReports = db
-    .select({
-      summary: dailyAnalysisReport.summary,
-      indicators: dailyAnalysisReport.indicators,
-    })
-    .from(dailyAnalysisReport)
-    .where(
-      and(
-        eq(dailyAnalysisReport.code, code),
-        sql`${dailyAnalysisReport.date} < ${date}`,
-      ),
-    )
-    .orderBy(desc(dailyAnalysisReport.date))
-    .limit(3)
-    .all();
-
-  // 4. 计算技术指标和信号
-  const indicators = analysisService.computeIndicators(ohlcvData);
-  const signals = analysisService.computeSignals(ohlcvData);
-
-  // 5. 构造 prompt 并调用 LLM
-  const prompt = buildObjectivePrompt({
-    code,
-    name: stockInfo.name,
-    dailyData: ohlcvData,
-    prevReports,
-    indicators,
-    signals,
-  });
-
-  // 追加到 session
-  sessionService.appendMessage(
-    sessionId,
-    'system',
-    '你是一个客观的A股数据分析师。请基于数据生成客观分析报告，不要给出投资建议。',
-  );
-  sessionService.appendMessage(sessionId, 'user', prompt);
-
-  // 调用 LLM
-  const llmResponse = await llmService.chatCompletion({
-    messages: getSessionMessages(sessionId),
-    maxTokens: 1500,
-    temperature: 0.3,
-    sessionId,
-  });
-
-  sessionService.appendMessage(sessionId, 'assistant', llmResponse);
-
-  // 6. 解析 LLM 回复
-  let summary = llmResponse;
-  let indicatorsStr = JSON.stringify(indicators);
-  let signalsStr = JSON.stringify(signals);
-
-  const parsed = parseLLMJsonResponse<{
-    summary?: string;
-    indicators?: Record<string, unknown>;
-    signals?: Record<string, unknown>;
-  }>(llmResponse);
-
-  if (parsed) {
-    if (parsed.summary) summary = parsed.summary;
-    if (parsed.indicators) indicatorsStr = JSON.stringify(parsed.indicators);
-    if (parsed.signals) signalsStr = JSON.stringify(parsed.signals);
-  }
-
-  // 7. 写入 daily_analysis_report 表
-  db.insert(dailyAnalysisReport)
-    .values({
+    // 5. 构造 prompt 并调用 LLM
+    const prompt = buildObjectivePrompt({
       code,
-      date,
-      summary,
-      indicators: indicatorsStr,
-      signals: signalsStr,
-    })
-    .onConflictDoUpdate({
-      target: [dailyAnalysisReport.code, dailyAnalysisReport.date],
-      set: {
+      name: stockInfo.name,
+      dailyData: ohlcvData,
+      prevReports,
+      indicators,
+      signals,
+    });
+
+    // 追加到 session
+    sessionService.appendMessage(
+      sessionId,
+      'system',
+      '你是一个客观的A股数据分析师。请基于数据生成客观分析报告，不要给出投资建议。',
+    );
+    sessionService.appendMessage(sessionId, 'user', prompt);
+
+    // 调用 LLM
+    const llmResponse = await llmService.chatCompletion({
+      messages: getSessionMessages(sessionId),
+      maxTokens: 1500,
+      temperature: 0.3,
+      sessionId,
+    });
+
+    sessionService.appendMessage(sessionId, 'assistant', llmResponse);
+
+    // 6. 解析 LLM 回复
+    let summary = llmResponse;
+    let indicatorsStr = JSON.stringify(indicators);
+    let signalsStr = JSON.stringify(signals);
+
+    const parsed = parseLLMJsonResponse<{
+      summary?: string;
+      indicators?: Record<string, unknown>;
+      signals?: Record<string, unknown>;
+    }>(llmResponse);
+
+    if (parsed) {
+      if (parsed.summary) summary = parsed.summary;
+      if (parsed.indicators) indicatorsStr = JSON.stringify(parsed.indicators);
+      if (parsed.signals) signalsStr = JSON.stringify(parsed.signals);
+    }
+
+    // 7. 写入 daily_analysis_report 表
+    db.insert(dailyAnalysisReport)
+      .values({
+        code,
+        date,
         summary,
         indicators: indicatorsStr,
         signals: signalsStr,
-      },
-    })
-    .run();
+      })
+      .onConflictDoUpdate({
+        target: [dailyAnalysisReport.code, dailyAnalysisReport.date],
+        set: {
+          summary,
+          indicators: indicatorsStr,
+          signals: signalsStr,
+        },
+      })
+      .run();
 
-  const inserted = db
-    .select()
-    .from(dailyAnalysisReport)
-    .where(
-      and(
-        eq(dailyAnalysisReport.code, code),
-        eq(dailyAnalysisReport.date, date),
-      ),
-    )
-    .get()!;
+    const inserted = db
+      .select()
+      .from(dailyAnalysisReport)
+      .where(
+        and(
+          eq(dailyAnalysisReport.code, code),
+          eq(dailyAnalysisReport.date, date),
+        ),
+      )
+      .get()!;
 
-  // 8. 向量化并存储嵌入
-  try {
-    const embeddingText = `[${code} ${date}] ${summary}`;
-    const embedding = await embeddingService.getEmbedding(embeddingText);
+    // 8. 向量化并存储嵌入
+    try {
+      const embeddingText = `[${code} ${date}] ${summary}`;
+      const embedding = await embeddingService.getEmbedding(embeddingText);
 
-    // 先清理旧的 analysis 类型向量
-    await embeddingService.deleteEmbeddings(code, 'analysis');
-    await embeddingService.storeEmbedding({
-      contentType: 'analysis',
-      contentCode: code,
-      contentDate: date,
-      contentText: summary,
-      embedding,
-    });
-  } catch (err) {
-    console.warn(
-      `[pipeline] 向量化失败 (${code} ${date}):`,
-      (err as Error).message,
-    );
+      // 先清理旧的 analysis 类型向量
+      await embeddingService.deleteEmbeddings(code, 'analysis');
+      await embeddingService.storeEmbedding({
+        contentType: 'analysis',
+        contentCode: code,
+        contentDate: date,
+        contentText: summary,
+        embedding,
+      });
+    } catch (err) {
+      console.warn(
+        `[pipeline] 向量化失败 (${code} ${date}):`,
+        (err as Error).message,
+      );
+    }
+
+    return {
+      id: inserted.id,
+      summary,
+      indicators: indicatorsStr,
+      signals: signalsStr,
+    };
   }
 
-  return {
-    id: inserted.id,
-    summary,
-    indicators: indicatorsStr,
-    signals: signalsStr,
-  };
-}
-
-// ─── Stage 3: 舆情获取 ──────────────────────────────────────────
-
-/**
- * Stage 3 — 舆情获取
- *
- * 调用 DashScope API 搜索股票最近三天的新闻和市场舆情，
- * 将结果写入 sentiment_report 表。
- *
- * @param code - 股票代码
- * @param date - 报告日期（yyyy-MM-dd）
- * @returns 舆情报告信息
- */
-export async function stage3Sentiment(
-  code: string,
-  date: string,
-): Promise<Stage3Result> {
-  const db = getDatabase();
-
-  // 获取股票名称
-  const stockInfo = await stockService.getStockByCode(code);
-  const name = stockInfo?.name || code;
-
-  // 调用舆情搜索
-  const { report, sources } = await sentimentService.fetchSentiment(
-    code,
-    name,
-  );
-
-  // 写入 sentiment_report 表
-  db.insert(sentimentReport)
-    .values({
-      code,
-      date,
-      report,
-      sources: JSON.stringify(sources),
-    })
-    .onConflictDoUpdate({
-      target: [sentimentReport.code, sentimentReport.date],
-      set: {
-        report,
-        sources: JSON.stringify(sources),
-      },
-    })
-    .run();
-
-  const inserted = db
-    .select()
-    .from(sentimentReport)
-    .where(
-      and(
-        eq(sentimentReport.code, code),
-        eq(sentimentReport.date, date),
-      ),
-    )
-    .get()!;
-
-  return {
-    id: inserted.id,
-    report,
-    sources,
-  };
-}
-
-// ─── Stage 4: 多角色分析 ────────────────────────────────────────
-
-/**
- * Stage 4 — 多角色分析
- *
- * 4 个角色按顺序发言，每轮每人聚焦各自专业领域。
- * 第一轮（必须）：技术分析师 → 基本面分析师 → 舆情分析师 → 风控官
- * 第二轮（可选）：风控官 → 舆情分析师 → 基本面分析师 → 技术分析师（回应分歧）
- *
- * 每个角色的发言写入 analysis_roler 表。
- *
- * @param code      - 股票代码
- * @param date      - 分析日期
- * @param darId     - 客观报告 ID
- * @param srId      - 舆情报告 ID（可为 null）
- * @param sessionId - LLM 会话 ID
- * @returns 所有角色发言记录
- */
-export async function stage4MultiRole(
-  code: string,
-  date: string,
-  darId: number,
-  srId: number | null,
-  sessionId: string,
-): Promise<Stage4Result> {
-  const db = getDatabase();
-
-  // 1. 读取客观报告和舆情报告
-  const dar = db
-    .select()
-    .from(dailyAnalysisReport)
-    .where(eq(dailyAnalysisReport.id, darId))
-    .get();
-
-  if (!dar) {
-    throw new Error(`客观报告不存在 (id=${darId})`);
-  }
-
-  const darNonNull = dar;
-
-  const sr = srId
-    ? db
-        .select()
-        .from(sentimentReport)
-        .where(eq(sentimentReport.id, srId))
-        .get()
-    : null;
-
-  // 2. 获取股票名称
-  const stockInfo = await stockService.getStockByCode(code);
-  const name = stockInfo?.name || code;
-
-  const allRoleRecords: Stage4Result['roles'] = [];
+  // ─── Stage 3: 舆情获取 ──────────────────────────────────────────
 
   /**
-   * 执行一轮角色发言。
+   * Stage 3 — 舆情获取
    *
-   * @param roleOrder    - 角色数组（发言顺序）
-   * @param round        - 轮次编号
-   * @param allRound1Speeches - 第一轮所有发言（仅第二轮需要）
+   * 调用 DashScope API 搜索股票最近三天的新闻和市场舆情，
+   * 将结果写入 sentiment_report 表。
+   *
+   * @param date - 报告日期（yyyy-MM-dd）
+   * @returns 舆情报告信息
    */
-  async function runRound(
-    roleOrder: RoleConfig[],
-    round: number,
-    allRound1Speeches?: string,
-  ): Promise<void> {
-    // 收集本轮之前的发言，用于构造上下文
-    const previousSpeeches: string[] = [];
+  async stage3Sentiment(date: string): Promise<Stage3Result> {
+    const db = getDatabase();
+    const code = this.code;
 
-    for (const role of roleOrder) {
-      // 构造本轮上下文（不包括当前角色的发言）
-      const previousContext =
-        allRound1Speeches && round === 2
-          ? allRound1Speeches
-          : previousSpeeches.join('\n\n---\n\n');
+    // 获取股票名称
+    const stockInfo = await stockService.getStockByCode(code);
+    const name = stockInfo?.name || code;
 
-      const prompt = buildRolePrompt({
-        role,
-        code,
-        name,
-        darSummary: darNonNull.summary,
-        darIndicators: darNonNull.indicators,
-        srReport: sr?.report,
-        previousSpeeches: previousContext,
-        round,
-      });
-
-      // 添加到 session
-      sessionService.appendMessage(sessionId, 'system', role.systemPrompt);
-      sessionService.appendMessage(sessionId, 'user', prompt);
-
-      // 调用 LLM
-      const response = await llmService.chatCompletion({
-        messages: getSessionMessages(sessionId),
-        maxTokens: round === 1 ? role.wordLimitRound1 + 200 : role.wordLimitRound2 + 200,
-        temperature: 0.5,
-        sessionId,
-      });
-
-      sessionService.appendMessage(sessionId, 'assistant', response);
-
-      // 统计字数并写入数据库
-      const wordCount = countWords(response);
-
-      db.insert(analysisRoler)
-        .values({
-          code,
-          date,
-          role: role.name,
-          responsibility: role.responsibility,
-          report: response,
-          round,
-          wordCount,
-        })
-        .run();
-
-      const inserted = db
-        .select()
-        .from(analysisRoler)
-        .where(
-          and(
-            eq(analysisRoler.code, code),
-            eq(analysisRoler.date, date),
-            eq(analysisRoler.role, role.name),
-            eq(analysisRoler.round, round),
-          ),
-        )
-        .orderBy(desc(analysisRoler.id))
-        .limit(1)
-        .all();
-
-      if (inserted.length > 0) {
-        allRoleRecords.push({
-          id: inserted[0].id,
-          role: role.name,
-          report: response,
-          round,
-          wordCount,
-        });
-      }
-
-      previousSpeeches.push(`【${role.name}】\n${response}`);
-    }
-  }
-
-  // 第一轮：按 1→2→3→4 顺序
-  await runRound(ROLES, 1);
-
-  // 第二轮（可选）：收集第一轮所有内容作为上下文，按 4→3→2→1 顺序
-  const round1Speeches = allRoleRecords
-    .filter((r) => r.round === 1)
-    .map((r) => `【${r.role}】\n${r.report}`)
-    .join('\n\n---\n\n');
-
-  const reversedRoles = [...ROLES].reverse();
-  await runRound(reversedRoles, 2, round1Speeches);
-
-  return { roles: allRoleRecords };
-}
-
-// ─── Stage 5: 最终报告 ──────────────────────────────────────────
-
-/**
- * Stage 5 — 最终报告
- *
- * 综合客观报告、舆情报告和多角色分析结果，
- * 调用 LLM 生成包含概述（overview）和完整报告（full）的最终报告。
- *
- * 写入 final_report 表并生成向量嵌入。
- *
- * @param code      - 股票代码
- * @param date      - 报告日期
- * @param sessionId - LLM 会话 ID
- * @returns 最终报告信息
- */
-export async function stage5FinalReport(
-  code: string,
-  date: string,
-  sessionId: string,
-): Promise<Stage5Result> {
-  const db = getDatabase();
-
-  // 1. 获取股票信息
-  const stockInfo = await stockService.getStockByCode(code);
-  const name = stockInfo?.name || code;
-
-  // 2. 收集客观报告
-  const dar = db
-    .select()
-    .from(dailyAnalysisReport)
-    .where(
-      and(
-        eq(dailyAnalysisReport.code, code),
-        eq(dailyAnalysisReport.date, date),
-      ),
-    )
-    .get();
-
-  // 3. 收集舆情报告
-  const sr = db
-    .select()
-    .from(sentimentReport)
-    .where(
-      and(
-        eq(sentimentReport.code, code),
-        eq(sentimentReport.date, date),
-      ),
-    )
-    .get();
-
-  // 4. 收集多角色发言
-  const roleRecords = db
-    .select()
-    .from(analysisRoler)
-    .where(
-      and(
-        eq(analysisRoler.code, code),
-        eq(analysisRoler.date, date),
-      ),
-    )
-    .orderBy(analysisRoler.round, analysisRoler.id)
-    .all();
-
-  // 5. 编排角色讨论文本
-  const roleDiscussions = roleRecords
-    .map(
-      (r) =>
-        `[第${r.round}轮 ${r.role}]（${r.responsibility}）\n${r.report}`,
-    )
-    .join('\n\n---\n\n');
-
-  // 6. 构造 prompt 并调用 LLM
-  const pipelineId = generatePipelineId();
-
-  const prompt = buildFinalReportPrompt({
-    code,
-    name,
-    darSummary: dar?.summary || '无客观报告',
-    darIndicators: dar?.indicators || '{}',
-    srReport: sr?.report,
-    roleDiscussions,
-  });
-
-  sessionService.appendMessage(
-    sessionId,
-    'system',
-    '你是一位资深的A股投资分析师。请综合所有材料生成投资分析报告。',
-  );
-  sessionService.appendMessage(sessionId, 'user', prompt);
-
-  const llmResponse = await llmService.chatCompletion({
-    messages: getSessionMessages(sessionId),
-    maxTokens: 3000,
-    temperature: 0.5,
-    sessionId,
-  });
-
-  sessionService.appendMessage(sessionId, 'assistant', llmResponse);
-
-  // 7. 解析 LLM 回复
-  let summary = llmResponse.slice(0, 500);
-  let fullReport = llmResponse;
-  let roleSummary = '[]';
-
-  const parsed = parseLLMJsonResponse<{
-    summary?: string;
-    fullReport?: string;
-    roleSummary?: { role: string; keyPoint: string }[];
-  }>(llmResponse);
-
-  if (parsed) {
-    if (parsed.summary) summary = parsed.summary;
-    if (parsed.fullReport) fullReport = parsed.fullReport;
-    if (parsed.roleSummary) roleSummary = JSON.stringify(parsed.roleSummary);
-  }
-
-  // 8. 写入 final_report 表
-  db.insert(finalReport)
-    .values({
+    // 调用舆情搜索
+    const { report, sources } = await sentimentService.fetchSentiment(
       code,
-      date,
-      summary,
-      fullReport,
-      roleSummary,
-      pipelineId,
-    })
-    .onConflictDoUpdate({
-      target: [finalReport.code, finalReport.date],
-      set: {
+      name,
+    );
+
+    // 写入 sentiment_report 表
+    db.insert(sentimentReport)
+      .values({
+        code,
+        date,
+        report,
+        sources: JSON.stringify(sources),
+      })
+      .onConflictDoUpdate({
+        target: [sentimentReport.code, sentimentReport.date],
+        set: {
+          report,
+          sources: JSON.stringify(sources),
+        },
+      })
+      .run();
+
+    const inserted = db
+      .select()
+      .from(sentimentReport)
+      .where(
+        and(
+          eq(sentimentReport.code, code),
+          eq(sentimentReport.date, date),
+        ),
+      )
+      .get()!;
+
+    return {
+      id: inserted.id,
+      report,
+      sources,
+    };
+  }
+
+  // ─── Stage 4: 多角色分析 ────────────────────────────────────────
+
+  /**
+   * Stage 4 — 多角色分析
+   *
+   * 4 个角色按顺序发言，每轮每人聚焦各自专业领域。
+   * 第一轮（必须）：技术分析师 → 基本面分析师 → 舆情分析师 → 风控官
+   * 第二轮（可选）：风控官 → 舆情分析师 → 基本面分析师 → 技术分析师（回应分歧）
+   *
+   * 每个角色的发言写入 analysis_roler 表。
+   *
+   * @param date  - 分析日期
+   * @param darId - 客观报告 ID
+   * @param srId  - 舆情报告 ID（可为 null）
+   * @returns 所有角色发言记录
+   */
+  async stage4MultiRole(
+    date: string,
+    darId: number,
+    srId: number | null,
+  ): Promise<Stage4Result> {
+    const db = getDatabase();
+    const { code, sessionId } = this;
+
+    // 1. 读取客观报告和舆情报告
+    const dar = db
+      .select()
+      .from(dailyAnalysisReport)
+      .where(eq(dailyAnalysisReport.id, darId))
+      .get();
+
+    if (!dar) {
+      throw new Error(`客观报告不存在 (id=${darId})`);
+    }
+
+    const darNonNull = dar;
+
+    const sr = srId
+      ? db
+          .select()
+          .from(sentimentReport)
+          .where(eq(sentimentReport.id, srId))
+          .get()
+      : null;
+
+    // 2. 获取股票名称
+    const stockInfo = await stockService.getStockByCode(code);
+    const name = stockInfo?.name || code;
+
+    const allRoleRecords: Stage4Result['roles'] = [];
+
+    /**
+     * 执行一轮角色发言。
+     *
+     * @param roleOrder    - 角色数组（发言顺序）
+     * @param round        - 轮次编号
+     * @param allRound1Speeches - 第一轮所有发言（仅第二轮需要）
+     */
+    async function runRound(
+      roleOrder: RoleConfig[],
+      round: number,
+      allRound1Speeches?: string,
+    ): Promise<void> {
+      // 收集本轮之前的发言，用于构造上下文
+      const previousSpeeches: string[] = [];
+
+      for (const role of roleOrder) {
+        // 构造本轮上下文（不包括当前角色的发言）
+        const previousContext =
+          allRound1Speeches && round === 2
+            ? allRound1Speeches
+            : previousSpeeches.join('\n\n---\n\n');
+
+        const prompt = buildRolePrompt({
+          role,
+          code,
+          name,
+          darSummary: darNonNull.summary,
+          darIndicators: darNonNull.indicators,
+          srReport: sr?.report,
+          previousSpeeches: previousContext,
+          round,
+        });
+
+        // 添加到 session
+        sessionService.appendMessage(sessionId, 'system', role.systemPrompt);
+        sessionService.appendMessage(sessionId, 'user', prompt);
+
+        // 调用 LLM
+        const response = await llmService.chatCompletion({
+          messages: getSessionMessages(sessionId),
+          maxTokens: round === 1 ? role.wordLimitRound1 + 200 : role.wordLimitRound2 + 200,
+          temperature: 0.5,
+          sessionId,
+        });
+
+        sessionService.appendMessage(sessionId, 'assistant', response);
+
+        // 统计字数并写入数据库
+        const wordCount = countWords(response);
+
+        db.insert(analysisRoler)
+          .values({
+            code,
+            date,
+            role: role.name,
+            responsibility: role.responsibility,
+            report: response,
+            round,
+            wordCount,
+          })
+          .run();
+
+        const inserted = db
+          .select()
+          .from(analysisRoler)
+          .where(
+            and(
+              eq(analysisRoler.code, code),
+              eq(analysisRoler.date, date),
+              eq(analysisRoler.role, role.name),
+              eq(analysisRoler.round, round),
+            ),
+          )
+          .orderBy(desc(analysisRoler.id))
+          .limit(1)
+          .all();
+
+        if (inserted.length > 0) {
+          allRoleRecords.push({
+            id: inserted[0].id,
+            role: role.name,
+            report: response,
+            round,
+            wordCount,
+          });
+        }
+
+        previousSpeeches.push(`【${role.name}】\n${response}`);
+      }
+    }
+
+    // 第一轮：按 1→2→3→4 顺序
+    await runRound(ROLES, 1);
+
+    // 第二轮（可选）：收集第一轮所有内容作为上下文，按 4→3→2→1 顺序
+    const round1Speeches = allRoleRecords
+      .filter((r) => r.round === 1)
+      .map((r) => `【${r.role}】\n${r.report}`)
+      .join('\n\n---\n\n');
+
+    const reversedRoles = [...ROLES].reverse();
+    await runRound(reversedRoles, 2, round1Speeches);
+
+    return { roles: allRoleRecords };
+  }
+
+  // ─── Stage 5: 最终报告 ──────────────────────────────────────────
+
+  /**
+   * Stage 5 — 最终报告
+   *
+   * 综合客观报告、舆情报告和多角色分析结果，
+   * 调用 LLM 生成包含概述（overview）和完整报告（full）的最终报告。
+   *
+   * 写入 final_report 表并生成向量嵌入。
+   *
+   * @param date - 报告日期
+   * @returns 最终报告信息
+   */
+  async stage5FinalReport(date: string): Promise<Stage5Result> {
+    const db = getDatabase();
+    const { code, sessionId } = this;
+
+    // 1. 获取股票信息
+    const stockInfo = await stockService.getStockByCode(code);
+    const name = stockInfo?.name || code;
+
+    // 2. 收集客观报告
+    const dar = db
+      .select()
+      .from(dailyAnalysisReport)
+      .where(
+        and(
+          eq(dailyAnalysisReport.code, code),
+          eq(dailyAnalysisReport.date, date),
+        ),
+      )
+      .get();
+
+    // 3. 收集舆情报告
+    const sr = db
+      .select()
+      .from(sentimentReport)
+      .where(
+        and(
+          eq(sentimentReport.code, code),
+          eq(sentimentReport.date, date),
+        ),
+      )
+      .get();
+
+    // 4. 收集多角色发言
+    const roleRecords = db
+      .select()
+      .from(analysisRoler)
+      .where(
+        and(
+          eq(analysisRoler.code, code),
+          eq(analysisRoler.date, date),
+        ),
+      )
+      .orderBy(analysisRoler.round, analysisRoler.id)
+      .all();
+
+    // 5. 编排角色讨论文本
+    const roleDiscussions = roleRecords
+      .map(
+        (r) =>
+          `[第${r.round}轮 ${r.role}]（${r.responsibility}）\n${r.report}`,
+      )
+      .join('\n\n---\n\n');
+
+    // 6. 构造 prompt 并调用 LLM
+    const pipelineId = generatePipelineId();
+
+    const prompt = buildFinalReportPrompt({
+      code,
+      name,
+      darSummary: dar?.summary || '无客观报告',
+      darIndicators: dar?.indicators || '{}',
+      srReport: sr?.report,
+      roleDiscussions,
+    });
+
+    sessionService.appendMessage(
+      sessionId,
+      'system',
+      '你是一位资深的A股投资分析师。请综合所有材料生成投资分析报告。',
+    );
+    sessionService.appendMessage(sessionId, 'user', prompt);
+
+    const llmResponse = await llmService.chatCompletion({
+      messages: getSessionMessages(sessionId),
+      maxTokens: 3000,
+      temperature: 0.5,
+      sessionId,
+    });
+
+    sessionService.appendMessage(sessionId, 'assistant', llmResponse);
+
+    // 7. 解析 LLM 回复
+    let summary = llmResponse.slice(0, 500);
+    let fullReport = llmResponse;
+    let roleSummary = '[]';
+
+    const parsed = parseLLMJsonResponse<{
+      summary?: string;
+      fullReport?: string;
+      roleSummary?: { role: string; keyPoint: string }[];
+    }>(llmResponse);
+
+    if (parsed) {
+      if (parsed.summary) summary = parsed.summary;
+      if (parsed.fullReport) fullReport = parsed.fullReport;
+      if (parsed.roleSummary) roleSummary = JSON.stringify(parsed.roleSummary);
+    }
+
+    // 8. 写入 final_report 表
+    db.insert(finalReport)
+      .values({
+        code,
+        date,
         summary,
         fullReport,
         roleSummary,
         pipelineId,
-      },
-    })
-    .run();
+      })
+      .onConflictDoUpdate({
+        target: [finalReport.code, finalReport.date],
+        set: {
+          summary,
+          fullReport,
+          roleSummary,
+          pipelineId,
+        },
+      })
+      .run();
 
-  const inserted = db
-    .select()
-    .from(finalReport)
-    .where(
-      and(
-        eq(finalReport.code, code),
-        eq(finalReport.date, date),
-      ),
-    )
-    .get()!;
+    const inserted = db
+      .select()
+      .from(finalReport)
+      .where(
+        and(
+          eq(finalReport.code, code),
+          eq(finalReport.date, date),
+        ),
+      )
+      .get()!;
 
-  // 9. 向量化并存储嵌入
-  try {
-    const embeddingText = `[${code} ${date} 最终报告] ${summary}`;
-    const embedding = await embeddingService.getEmbedding(embeddingText);
+    // 9. 向量化并存储嵌入
+    try {
+      const embeddingText = `[${code} ${date} 最终报告] ${summary}`;
+      const embedding = await embeddingService.getEmbedding(embeddingText);
 
-    // 先清理旧的 final 类型向量
-    await embeddingService.deleteEmbeddings(code, 'final');
-    await embeddingService.storeEmbedding({
-      contentType: 'final',
-      contentCode: code,
-      contentDate: date,
-      contentText: fullReport.slice(0, 500),
-      embedding,
-    });
-  } catch (err) {
-    console.warn(
-      `[pipeline] 最终报告向量化失败 (${code} ${date}):`,
-      (err as Error).message,
-    );
+      // 先清理旧的 final 类型向量
+      await embeddingService.deleteEmbeddings(code, 'final');
+      await embeddingService.storeEmbedding({
+        contentType: 'final',
+        contentCode: code,
+        contentDate: date,
+        contentText: fullReport.slice(0, 500),
+        embedding,
+      });
+    } catch (err) {
+      console.warn(
+        `[pipeline] 最终报告向量化失败 (${code} ${date}):`,
+        (err as Error).message,
+      );
+    }
+
+    return {
+      id: inserted.id,
+      summary,
+      fullReport,
+      roleSummary,
+      pipelineId,
+    };
   }
 
-  return {
-    id: inserted.id,
-    summary,
-    fullReport,
-    roleSummary,
-    pipelineId,
-  };
+  // ─── Orchestrators ───────────────────────────────────────────────
+
+  /**
+   * 运行完整流水线（Stage 1→5）。
+   *
+   * 依次执行数据获取、客观报告、
+   * 舆情获取、多角色分析和最终报告。
+   *
+   * @returns 流水线运行结果（日期、流水线 ID、最终报告 ID）
+   *
+   * @example
+   * const result = await new Pipeline('600519').runFull();
+   * console.log(result.date, result.pipelineId);
+   */
+  async runFull(): Promise<PipelineResult> {
+    const code = this.code;
+    console.log(`[pipeline] 开始全流水线: ${code} (session=${this.sessionId})`);
+
+    // Stage 1: 数据获取
+    console.log(`[pipeline] Stage 1/5 — 数据获取: ${code}`);
+    const stage1 = await this.stage1FetchData();
+    const date = stage1.date;
+    console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
+
+    // Stage 2: 客观报告
+    console.log(`[pipeline] Stage 2/5 — 客观报告: ${code}`);
+    const stage2 = await this.stage2ObjectiveReport(date);
+    console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
+
+    // Stage 3: 舆情获取
+    console.log(`[pipeline] Stage 3/5 — 舆情获取: ${code}`);
+    const stage3 = await this.stage3Sentiment(date);
+    console.log(`[pipeline] Stage 3 完成: id=${stage3.id}`);
+
+    // Stage 4: 多角色分析
+    console.log(`[pipeline] Stage 4/5 — 多角色分析: ${code}`);
+    const stage4 = await this.stage4MultiRole(
+      date,
+      stage2.id,
+      stage3.id,
+    );
+    console.log(
+      `[pipeline] Stage 4 完成: ${stage4.roles.length} 条发言`,
+    );
+
+    // Stage 5: 最终报告
+    console.log(`[pipeline] Stage 5/5 — 最终报告: ${code}`);
+    const stage5 = await this.stage5FinalReport(date);
+    console.log(
+      `[pipeline] Stage 5 完成: id=${stage5.id}, pipelineId=${stage5.pipelineId}`,
+    );
+
+    console.log(`[pipeline] 全流水线完成: ${code} ${date}`);
+
+    return {
+      date,
+      pipelineId: stage5.pipelineId,
+      finalReportId: stage5.id,
+    };
+  }
+
+  /**
+   * 运行本地分析（Stage 1→2）。
+   *
+   * 仅执行数据获取和客观分析报告生成，跳过舆情和多角色环节。
+   *
+   * @returns 分析结果（日期和报告 ID）
+   *
+   * @example
+   * const result = await new Pipeline('600519').runLocalAnalysis();
+   * console.log(result.date, result.analysisReportId);
+   */
+  async runLocalAnalysis(): Promise<LocalAnalysisResult> {
+    const code = this.code;
+    console.log(`[pipeline] 开始本地分析: ${code} (session=${this.sessionId})`);
+
+    // Stage 1: 数据获取
+    console.log(`[pipeline] Stage 1/2 — 数据获取: ${code}`);
+    const stage1 = await this.stage1FetchData();
+    const date = stage1.date;
+    console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
+
+    // Stage 2: 客观报告
+    console.log(`[pipeline] Stage 2/2 — 客观报告: ${code}`);
+    const stage2 = await this.stage2ObjectiveReport(date);
+    console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
+
+    console.log(`[pipeline] 本地分析完成: ${code} ${date}`);
+
+    return {
+      date,
+      analysisReportId: stage2.id,
+    };
+  }
 }
 
-// ─── Orchestrators ───────────────────────────────────────────────
+// ─── 向后兼容包装函数 ────────────────────────────────────────────
 
 /**
- * 运行完整流水线（Stage 1→5）。
+ * Stage 1 — 数据获取（向后兼容包装）
  *
- * 创建一个新的 LLM 会话，依次执行数据获取、客观报告、
- * 舆情获取、多角色分析和最终报告。
+ * @param code - 六位股票代码
+ * @returns 最新交易日日期和记录数
+ */
+export async function stage1FetchData(code: string): Promise<Stage1Result> {
+  const pipeline = new Pipeline(code);
+  return pipeline.stage1FetchData();
+}
+
+/**
+ * 运行完整流水线（Stage 1→5，向后兼容包装）。
  *
  * @param code - 股票代码
  * @returns 流水线运行结果（日期、流水线 ID、最终报告 ID）
- *
- * @example
- * const result = await runFullPipeline('600519');
- * console.log(result.date, result.pipelineId);
  */
 export async function runFullPipeline(code: string): Promise<PipelineResult> {
-  // 创建新会话
-  const sessionId = sessionService.createSession();
-  console.log(`[pipeline] 开始全流水线: ${code} (session=${sessionId})`);
-
-  // Stage 1: 数据获取
-  console.log(`[pipeline] Stage 1/5 — 数据获取: ${code}`);
-  const stage1 = await stage1FetchData(code);
-  const date = stage1.date;
-  console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
-
-  // Stage 2: 客观报告
-  console.log(`[pipeline] Stage 2/5 — 客观报告: ${code}`);
-  const stage2 = await stage2ObjectiveReport(code, date, sessionId);
-  console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
-
-  // Stage 3: 舆情获取
-  console.log(`[pipeline] Stage 3/5 — 舆情获取: ${code}`);
-  const stage3 = await stage3Sentiment(code, date);
-  console.log(`[pipeline] Stage 3 完成: id=${stage3.id}`);
-
-  // Stage 4: 多角色分析
-  console.log(`[pipeline] Stage 4/5 — 多角色分析: ${code}`);
-  const stage4 = await stage4MultiRole(
-    code,
-    date,
-    stage2.id,
-    stage3.id,
-    sessionId,
-  );
-  console.log(
-    `[pipeline] Stage 4 完成: ${stage4.roles.length} 条发言`,
-  );
-
-  // Stage 5: 最终报告
-  console.log(`[pipeline] Stage 5/5 — 最终报告: ${code}`);
-  const stage5 = await stage5FinalReport(code, date, sessionId);
-  console.log(
-    `[pipeline] Stage 5 完成: id=${stage5.id}, pipelineId=${stage5.pipelineId}`,
-  );
-
-  console.log(`[pipeline] 全流水线完成: ${code} ${date}`);
-
-  return {
-    date,
-    pipelineId: stage5.pipelineId,
-    finalReportId: stage5.id,
-  };
+  const pipeline = new Pipeline(code);
+  return pipeline.runFull();
 }
 
 /**
- * 运行本地分析（Stage 1→2）。
- *
- * 仅执行数据获取和客观分析报告生成，跳过舆情和多角色环节。
+ * 运行本地分析（Stage 1→2，向后兼容包装）。
  *
  * @param code - 股票代码
  * @returns 分析结果（日期和报告 ID）
- *
- * @example
- * const result = await runLocalAnalysis('600519');
- * console.log(result.date, result.analysisReportId);
  */
 export async function runLocalAnalysis(
   code: string,
 ): Promise<LocalAnalysisResult> {
-  // 创建新会话
-  const sessionId = sessionService.createSession();
-  console.log(`[pipeline] 开始本地分析: ${code} (session=${sessionId})`);
-
-  // Stage 1: 数据获取
-  console.log(`[pipeline] Stage 1/2 — 数据获取: ${code}`);
-  const stage1 = await stage1FetchData(code);
-  const date = stage1.date;
-  console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
-
-  // Stage 2: 客观报告
-  console.log(`[pipeline] Stage 2/2 — 客观报告: ${code}`);
-  const stage2 = await stage2ObjectiveReport(code, date, sessionId);
-  console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
-
-  console.log(`[pipeline] 本地分析完成: ${code} ${date}`);
-
-  return {
-    date,
-    analysisReportId: stage2.id,
-  };
+  const pipeline = new Pipeline(code);
+  return pipeline.runLocalAnalysis();
 }
