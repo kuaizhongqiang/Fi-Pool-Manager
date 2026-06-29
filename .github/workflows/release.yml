@@ -1,8 +1,10 @@
 name: Release
 
 on:
-  push:
-    branches: [main]
+  # 手动禁用：与手动 tag 冲突。改用 publish.yml + 手动 git tag。
+  # push:
+  #   branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
