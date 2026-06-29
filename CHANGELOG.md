@@ -1,3 +1,12 @@
+## [1.1.2](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.1.1...v1.1.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* add-stocks 自动补全 stock 记录 ([de61394](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/de6139497ee657e62f1617d7733945253f803066))
+* add-stocks 自动补全 stock 记录避免 FK 约束失败 ([85ce12a](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/85ce12aee0224c772ff928cc9fb84d1dba915f1e)), closes [#69](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/69)
+* Docker 镜像名转小写（ghcr.io 要求） ([a55b37e](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/a55b37eaa72a249d0997b9925fa2d2c8d2c8eb75))
+
 ## [1.1.1](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.1.0...v1.1.1) (2026-06-29)
 
 
