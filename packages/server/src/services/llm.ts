@@ -98,6 +98,8 @@ export async function chatCompletion(
   };
 
   // 使用 fetchWithRetry：传入一个返回 Promise 的函数
+  // LLM 推理可能较慢（尤其首次加载模型），超时设为 120s
+  const LLM_TIMEOUT = 120_000;
   const data = await fetchWithRetry<ChatCompletionResponse>(
     () =>
       fetchJson<ChatCompletionResponse>(
@@ -109,6 +111,8 @@ export async function chatCompletion(
           },
           body: JSON.stringify(body),
         },
+        undefined, // signal
+        LLM_TIMEOUT,
       ),
     2,
     1000,

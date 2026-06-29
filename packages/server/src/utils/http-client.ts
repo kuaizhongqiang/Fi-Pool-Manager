@@ -54,17 +54,17 @@ export class HttpError extends Error {
  * @param url     - 请求 URL
  * @param options - fetch 选项（method、headers、body 等）
  * @param signal  - 外部 AbortSignal（可与内部超时同时生效）
+ * @param timeout - 超时毫秒数，默认 DEFAULT_TIMEOUT_MS
  * @returns Response 对象
  * @throws {HttpError}  当响应状态码非 2xx 时
  * @throws {AbortError} 当请求超时或被外部中止时
  */
-async function request(url: string, options?: RequestInit, signal?: AbortSignal): Promise<Response> {
-  // 如果外部传入了 signal，与内部超时 signal 合并
+async function request(url: string, options?: RequestInit, signal?: AbortSignal, timeout?: number): Promise<Response> {
+  const effectiveTimeout = timeout ?? DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
-    // 合并 AbortSignal：外部 signal 与内部超时 signal
     const combinedSignal = signal
       ? combineAbortSignals(signal, controller.signal)
       : controller.signal;
@@ -113,6 +113,7 @@ function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
  * @param url     - 请求 URL
  * @param options - 可选的 fetch 选项（method、headers、body 等）
  * @param signal  - 可选的 AbortSignal，用于外部控制中止
+ * @param timeout - 超时毫秒数，默认 15s
  * @returns 解析后的 JSON 数据
  *
  * @example
@@ -126,8 +127,8 @@ function combineAbortSignals(...signals: AbortSignal[]): AbortSignal {
  * @throws {AbortError} 当请求超时或被中止时
  * @throws {SyntaxError} 当响应体不是合法 JSON 时
  */
-export async function fetchJson<T>(url: string, options?: RequestInit, signal?: AbortSignal): Promise<T> {
-  const response = await request(url, options, signal);
+export async function fetchJson<T>(url: string, options?: RequestInit, signal?: AbortSignal, timeout?: number): Promise<T> {
+  const response = await request(url, options, signal, timeout);
   const text = await response.text();
 
   if (text.length === 0) {
@@ -143,6 +144,7 @@ export async function fetchJson<T>(url: string, options?: RequestInit, signal?: 
  * @param url     - 请求 URL
  * @param options - 可选的 fetch 选项（method、headers、body 等）
  * @param signal  - 可选的 AbortSignal，用于外部控制中止
+ * @param timeout - 超时毫秒数，默认 15s
  * @returns 响应文本
  *
  * @example
@@ -153,8 +155,8 @@ export async function fetchJson<T>(url: string, options?: RequestInit, signal?: 
  * @throws {HttpError}  当响应状态码非 2xx 时
  * @throws {AbortError} 当请求超时或被中止时
  */
-export async function fetchText(url: string, options?: RequestInit, signal?: AbortSignal): Promise<string> {
-  const response = await request(url, options, signal);
+export async function fetchText(url: string, options?: RequestInit, signal?: AbortSignal, timeout?: number): Promise<string> {
+  const response = await request(url, options, signal, timeout);
   return response.text();
 }
 

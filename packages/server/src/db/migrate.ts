@@ -10,7 +10,11 @@
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { initDatabase, getDatabase, getDbPath } from './index.js';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 export function ensureDatabase(): ReturnType<typeof initDatabase> {
   const dbPath = resolve(getDbPath());
@@ -24,9 +28,12 @@ export function ensureDatabase(): ReturnType<typeof initDatabase> {
     console.log(`[db] 连接已有数据库: ${dbPath}`);
   }
 
-  // 执行迁移（Drizzle 会跳过已应用的迁移）
+  // 执行迁移 — 迁移文件夹路径相对于本文件位置
+  // 编译后：packages/server/dist/db/migrate.js → ../../drizzle
+  // 源码时：packages/server/src/db/migrate.ts → ../../drizzle
+  const migrationsFolder = resolve(__dirname, '../../drizzle');
   try {
-    migrate(db, { migrationsFolder: './drizzle' });
+    migrate(db, { migrationsFolder });
     console.log('[db] 迁移执行完成');
   } catch (err) {
     console.warn('[db] 迁移执行失败（可能是首次运行或迁移已是最新）:', (err as Error).message);

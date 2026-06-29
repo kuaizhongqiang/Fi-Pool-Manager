@@ -7,14 +7,14 @@ CREATE TABLE `analysis_roler` (
 	`report` text DEFAULT '' NOT NULL,
 	`round` integer DEFAULT 1 NOT NULL,
 	`word_count` integer DEFAULT 0 NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`code`) REFERENCES `stock`(`code`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
 CREATE TABLE `config` (
 	`key` text PRIMARY KEY NOT NULL,
 	`value` text DEFAULT '' NOT NULL,
-	`updated_at` text DEFAULT 'datetime('now')' NOT NULL
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `daily_analysis_report` (
@@ -24,7 +24,7 @@ CREATE TABLE `daily_analysis_report` (
 	`summary` text DEFAULT '' NOT NULL,
 	`indicators` text DEFAULT '{}' NOT NULL,
 	`signals` text DEFAULT '{}' NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`code`) REFERENCES `stock`(`code`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
@@ -48,7 +48,7 @@ CREATE TABLE `final_report` (
 	`full_report` text DEFAULT '' NOT NULL,
 	`role_summary` text DEFAULT '[]' NOT NULL,
 	`pipeline_id` text DEFAULT '' NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`code`) REFERENCES `stock`(`code`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
@@ -58,15 +58,15 @@ CREATE TABLE `pool` (
 	`desc` text DEFAULT '' NOT NULL,
 	`pool_analysis` text DEFAULT '' NOT NULL,
 	`pool_signal` integer DEFAULT 0 NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL,
-	`updated_at` text DEFAULT 'datetime('now')' NOT NULL
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `pool_stock` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`pool_id` integer NOT NULL,
 	`stock_code` text NOT NULL,
-	`added_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`added_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`pool_id`) REFERENCES `pool`(`id`) ON UPDATE no action ON DELETE no action,
 	FOREIGN KEY (`stock_code`) REFERENCES `stock`(`code`) ON UPDATE no action ON DELETE no action
 );
@@ -77,7 +77,7 @@ CREATE TABLE `sentiment_report` (
 	`date` text NOT NULL,
 	`report` text DEFAULT '' NOT NULL,
 	`sources` text DEFAULT '[]' NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`code`) REFERENCES `stock`(`code`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
@@ -85,7 +85,7 @@ CREATE TABLE `stock` (
 	`code` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`current_price` real DEFAULT 0 NOT NULL,
-	`updated_at` text DEFAULT 'datetime('now')' NOT NULL
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `vec_embedding` (
@@ -95,7 +95,7 @@ CREATE TABLE `vec_embedding` (
 	`content_date` text NOT NULL,
 	`content_text` text NOT NULL,
 	`embedding` blob,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL
+	`created_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX `idx_ar_code_date` ON `analysis_roler` (`code`,`date`);--> statement-breakpoint
