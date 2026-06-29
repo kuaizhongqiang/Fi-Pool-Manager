@@ -102,19 +102,22 @@
 
 ---
 
-## Stage 3 — 舆情获取（可选）
+## Stage 3 — 舆情获取
 
-> 舆情数据源待决策（概念 #13）。数据源确定前，此阶段跳过，不影响主流程。
+> 数据源：阿里云百炼 DashScope API（`qwen3.5-flash` + `enable_search=true`）
+> 该 API 同时完成搜索和舆情摘要生成，无需额外的 LLM 调用。
 
 ### 流程
 
 ```
-1. 检查 SEARCH_API_URL 是否配置
+1. 检查 DASHSCOPE_API_KEY 是否配置
 2. 如未配置，跳过本阶段，标记舆情报告为"无数据"
-3. 如已配置，通过搜索/舆情 API 获取股票最新相关新闻
-4. 整理新闻来源，去重
-5. 可选：调用 LLM 生成舆情摘要
-6. 写入 sentiment_report 表
+3. 如已配置，调用 DashScope API：
+   - model: qwen3.5-flash
+   - enable_search: true
+   - prompt: "搜索 {股票代码} {股票名称} 最近三天的相关新闻和市场信息"
+4. 解析返回内容，提取新闻要点
+5. 写入 sentiment_report 表
 ```
 
 ### 输入输出

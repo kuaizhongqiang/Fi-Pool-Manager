@@ -113,9 +113,10 @@ A 股个股的基础信息。
 
 舆情信息的来源。
 
-- **待决策** — 暂未确定具体数据源
-- 当前设计：舆情获取作为流水线的可选环节（Stage 3），数据源确定前跳过该阶段不影响主流程
-- 候选方向：公开财经新闻 API、搜索引擎 API、金融数据服务商
+- **已定**：阿里云百炼 DashScope API（`qwen3.5-flash` 模型 + `enable_search=true`）
+- 该 API 具备联网搜索能力，搜索同时生成舆情摘要报告
+- 兼容 OpenAI 标准格式，集成成本低
+- 配置项：`DASHSCOPE_API_KEY`、`DASHSCOPE_BASE_URL`、`SEARCH_MODEL`
 
 ### 14. 输入方式
 
