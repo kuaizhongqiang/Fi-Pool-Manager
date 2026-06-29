@@ -1,3 +1,10 @@
+# [0.2.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.1.0...v0.2.0) (2026-06-29)
+
+
+### Features
+
+* npm publish 配置 ([e706e4a](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/e706e4a3ca24e76699d274ae5c1c98d38ac41cf5))
+
 # Changelog
 
 ## [0.1.0] — 2026-06-29
