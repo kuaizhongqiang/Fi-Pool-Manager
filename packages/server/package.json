@@ -1,11 +1,27 @@
 {
   "name": "@fi-pool/server",
   "version": "0.1.0",
-  "private": true,
-  "description": "Fi-Pool-Manager 核心服务：数据获取、分析引擎、LLM 调用、向量检索",
+  "description": "Fi-Pool-Manager 核心服务：数据获取、技术分析、LLM 分析引擎、向量检索",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "drizzle",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuaizhongqiang/Fi-Pool-Manager.git"
+  },
+  "keywords": ["a股", "股票", "量化分析", "技术分析", "llm"],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "exports": {
     ".": "./dist/index.js",
     "./db/migrate.js": "./dist/db/migrate.js",
