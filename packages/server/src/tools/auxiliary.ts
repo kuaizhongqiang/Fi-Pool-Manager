@@ -144,6 +144,9 @@ export async function showVersion(): Promise<string> {
 /**
  * 查看指定配置项或所有配置。
  *
+ * 查询优先级：DB → process.env → null。
+ * DB 中不存在的键会 fallback 到 .env 环境变量。
+ *
  * @param key - 可选配置键名，不指定则返回所有配置
  * @returns 配置键值对
  */
@@ -151,26 +154,39 @@ export async function getConfig(key?: string) {
   const db = getDatabase();
 
   if (key) {
+    // 先查 DB，再 fallback 到 process.env
     const row = db
       .select()
       .from(configTable)
       .where(eq(configTable.key, key))
       .get();
-    return row
-      ? { key: row.key, value: row.value }
+    if (row) return { key: row.key, value: row.value };
+    const envVal = process.env[key];
+    return envVal !== undefined
+      ? { key, value: envVal, source: '.env' }
       : { key, value: null };
   }
 
+  // 返回全部：DB 值 + process.env 补充
   const allRows = db.select().from(configTable).all();
   const config: Record<string, string> = {};
   for (const row of allRows) {
     config[row.key] = row.value;
+  }
+  // 补充运行时环境变量中不在 DB 中的配置
+  const envKeys = ['LLM_BASE_URL', 'LLM_MODEL', 'DB_PATH', 'DASHSCOPE_API_KEY', 'DATA_FETCH_INTERVAL_MS'];
+  for (const ek of envKeys) {
+    if (!(ek in config) && process.env[ek]) {
+      config[ek] = process.env[ek]!;
+    }
   }
   return { config };
 }
 
 /**
  * 修改配置项。
+ *
+ * 同时更新 DB 和运行时的 process.env，确保对同一进程后续读取生效。
  *
  * @param key   - 配置键名
  * @param value - 配置值
@@ -186,6 +202,8 @@ export async function setConfig(key: string, value: string) {
         set: { value },
       })
       .run();
+    // 同步到运行时环境，确保同一进程后续读取一致
+    process.env[key] = value;
     return { success: true as const };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
