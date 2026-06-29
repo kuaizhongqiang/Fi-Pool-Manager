@@ -12,7 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@fi-pool/server": "*"
+    "@fi-pool/server": "^0.1.0"
   },
   "devDependencies": {}
 }
