@@ -47,6 +47,15 @@ npm install
 npm run build --workspaces
 ```
 
+**Docker**
+
+```bash
+docker pull ghcr.io/kuaizhongqiang/fi-pool-manager:latest
+docker run -p 3000:3000 -v /data:/data ghcr.io/kuaizhongqiang/fi-pool-manager
+# 健康检查: http://localhost:3000/health
+# 系统状态: http://localhost:3000/status
+```
+
 ### 配置
 
 ```bash
