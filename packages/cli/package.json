@@ -1,13 +1,32 @@
 {
   "name": "@fi-pool/cli",
   "version": "0.1.0",
-  "private": true,
-  "description": "Fi-Pool-Manager CLI 命令行入口",
+  "description": "Fi-Pool-Manager CLI — A股股池管理命令行工具",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "fi-pool": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kuaizhongqiang/Fi-Pool-Manager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues"
+  },
+  "homepage": "https://github.com/kuaizhongqiang/Fi-Pool-Manager#readme",
+  "keywords": ["a股", "股票", "量化分析", "技术分析", "cli"],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   },
   "scripts": {
     "build": "tsc",
@@ -17,7 +36,7 @@
   "dependencies": {
     "commander": "^12.0.0",
     "dotenv": "^16.4.0",
-    "@fi-pool/server": "*"
+    "@fi-pool/server": "^0.1.0"
   },
   "devDependencies": {}
 }
