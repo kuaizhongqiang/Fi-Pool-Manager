@@ -1,5 +1,5 @@
 /**
- * @fi-pool/server
+ * fi-pool-server
  * Fi-Pool-Manager 核心服务入口
  *
  * 数据获取（腾讯财经接口）
@@ -11,7 +11,7 @@
  *
  * 使用方式：
  * ```typescript
- * import { initDatabase, queryTools, managerTools } from '@fi-pool/server';
+ * import { initDatabase, queryTools, managerTools } from 'fi-pool-server';
  *
  * await initDatabase();
  * const pools = await queryTools.listPools();
@@ -25,7 +25,7 @@
  * - executeTools   — 流水线执行（返回 { success, data/error }）
  * - auxiliaryTools — 辅助功能（帮助、配置、状态）
  *
- * @module @fi-pool/server
+ * @module fi-pool-server
  */
 
 // ─── 数据库 ────────────────────────────────────────────────────

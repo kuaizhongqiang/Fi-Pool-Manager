@@ -1,9 +1,10 @@
 # Fi-Pool-Manager
 
 [![CI](https://github.com/kuaizhongqiang/Fi-Pool-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/kuaizhongqiang/Fi-Pool-Manager/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/kuaizhongqiang/Fi-Pool-Manager?include_prereleases)](https://github.com/kuaizhongqiang/Fi-Pool-Manager/releases)
+[![npm](https://img.shields.io/npm/v/fi-pool-cli)](https://www.npmjs.com/package/fi-pool-cli)
+[![npm downloads](https://img.shields.io/npm/dm/fi-pool-cli)](https://www.npmjs.com/package/fi-pool-cli)
 [![License](https://img.shields.io/github/license/kuaizhongqiang/Fi-Pool-Manager)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](package.json)
 
 A 股股池管理服务端。管理自定义股票池、获取日行情数据、进行技术分析，并通过多角色 LLM 分析产出投资建议报告。
 
@@ -24,11 +25,21 @@ A 股股池管理服务端。管理自定义股票池、获取日行情数据、
 
 ### 前置要求
 
-- **Node.js** ≥ 18
+- **Node.js** ≥ 20
 - **LM Studio**（可选，用于 LLM 分析功能）
 - 运行 `lm-studio` 并加载模型（推荐 `qwen3.5-9b`）
 
 ### 安装
+
+**方式一：npm 全局安装（推荐）**
+
+```bash
+npm install -g fi-pool-cli
+# 之后可以直接使用 fi-pool 命令
+fi-pool help
+```
+
+**方式二：从源码运行**
 
 ```bash
 git clone https://github.com/kuaizhongqiang/Fi-Pool-Manager.git
@@ -144,6 +155,8 @@ fi-pool-manager/
 ## 版本
 
 遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。当前版本 `0.1.0`。
+
+已发布到 npm：[`fi-pool-cli`](https://www.npmjs.com/package/fi-pool-cli) · [`fi-pool-server`](https://www.npmjs.com/package/fi-pool-server)
 
 ## 许可
 

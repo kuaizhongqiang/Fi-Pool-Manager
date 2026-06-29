@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 
 /**
- * @fi-pool/cli
+ * fi-pool-cli
  * Fi-Pool-Manager CLI 命令行入口
  *
  * 基于 Commander.js 实现。
- * 所有命令调用 @fi-pool/server 的核心逻辑。
+ * 所有命令调用 fi-pool-server 的核心逻辑。
  */
 
 import 'dotenv/config';
 import { Command } from 'commander';
-import { ensureDatabase } from '@fi-pool/server/db/migrate.js';
-import * as manager from '@fi-pool/server/tools/manager.js';
-import * as query from '@fi-pool/server/tools/query.js';
-import * as cmd from '@fi-pool/server/tools/command.js';
-import * as exec from '@fi-pool/server/tools/execute.js';
-import * as aux from '@fi-pool/server/tools/auxiliary.js';
+import { ensureDatabase } from 'fi-pool-server/db/migrate.js';
+import * as manager from 'fi-pool-server/tools/manager.js';
+import * as query from 'fi-pool-server/tools/query.js';
+import * as cmd from 'fi-pool-server/tools/command.js';
+import * as exec from 'fi-pool-server/tools/execute.js';
+import * as aux from 'fi-pool-server/tools/auxiliary.js';
 
 // ─── 输出格式化辅助 ───────────────────────────────────────────
 
