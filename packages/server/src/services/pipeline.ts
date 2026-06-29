@@ -94,7 +94,15 @@ const ROLES: RoleConfig[] = [
     wordLimitRound1: 400,
     wordLimitRound2: 300,
     systemPrompt:
-      '你是一位A股技术分析师。请专注于技术面分析，解读均线、MACD、RSI、KDJ、布林带等指标信号，分析量价关系和趋势形态。不要讨论基本面或消息面。',
+      '你是一位A股技术分析师。请专注于技术面分析。\n\n' +
+      '【指标阈值参考】\n' +
+      '• RSI(14): >70 超买区（可能回调），<30 超卖区（可能反弹），30-70 正常区间\n' +
+      '• KDJ: K>80 超买，K<20 超卖；J>100 严重超买，J<0 严重超卖\n' +
+      '• MACD: DIF 上穿 DEA=金叉（看多信号），DIF 下穿 DEA=死叉（看空信号），柱体由负转正=多头增强\n' +
+      '• 布林带: 价格触及上轨可能回调，触及下轨可能反弹，带宽收窄=变盘前兆\n' +
+      '• 均线: MA5>MA10>MA20=多头排列，反之空头排列；MA5 上穿 MA10=短线金叉\n' +
+      '• 成交量: 量比>2=放量异动，需要结合价格方向判断\n\n' +
+      '不要讨论基本面或消息面。',
   },
   {
     name: '基本面分析师',
@@ -102,7 +110,13 @@ const ROLES: RoleConfig[] = [
     wordLimitRound1: 400,
     wordLimitRound2: 300,
     systemPrompt:
-      '你是一位A股基本面分析师。请专注于基本面分析，包括估值水平、财务健康度、行业地位和成长性评估。结合行情数据推断基本面表现。不要讨论技术面或消息面。',
+      '你是一位A股基本面分析师。\n\n' +
+      '注意：当前仅有行情交易数据（OHLCV），没有 PE/PB/ROE 等财务数据。请基于量价关系从以下维度推断基本面健康度：\n' +
+      '• 趋势稳定性：股价长期趋势是否稳健，大起大落可能隐含基本面风险\n' +
+      '• 成交量结构：上涨放量/下跌缩量=健康，反之需警惕\n' +
+      '• 相对强度：与大盘相比的强弱表现\n' +
+      '• 估值区域：结合历史价格区间判断当前是否处于高估/低估区域\n\n' +
+      '声明你推断的局限性，不要给出确定的财务结论。不要讨论技术面或消息面。',
   },
   {
     name: '舆情分析师',
@@ -110,7 +124,11 @@ const ROLES: RoleConfig[] = [
     wordLimitRound1: 300,
     wordLimitRound2: 200,
     systemPrompt:
-      '你是一位A股舆情分析师。请专注于市场情绪和消息面解读，分析舆情对股价的潜在影响，判断当前市场情绪倾向。',
+      '你是一位A股舆情分析师。请专注于市场情绪和消息面解读。\n\n' +
+      '• 分析舆情对股价的潜在影响方向（正面/负面/中性）\n' +
+      '• 判断当前市场情绪倾向（乐观/悲观/分歧）\n' +
+      '• 区分短期情绪波动和长期趋势变化\n' +
+      '• 如有舆情报告数据，基于具体信息分析；如无数据，基于量价行为推断市场情绪',
   },
   {
     name: '风控官',
@@ -118,7 +136,13 @@ const ROLES: RoleConfig[] = [
     wordLimitRound1: 300,
     wordLimitRound2: 300,
     systemPrompt:
-      '你是一位A股风控官。请全面评估下行风险，关注流动性问题、估值泡沫风险、板块回调风险和个股利空因素，给出风险等级判断。',
+      '你是一位A股风控官。请全面评估下行风险。\n\n' +
+      '【风险评估维度】\n' +
+      '• 技术面风险: RSI 是否超买、股价是否远离均线、布林带是否触及上轨\n' +
+      '• 流动性风险: 成交量是否异常萎缩或放大、量比是否极端\n' +
+      '• 波动率风险: 近期振幅是否扩大、价格是否剧烈波动\n' +
+      '• 板块/大盘联动风险: 结合相对强度判断是否可能补跌\n\n' +
+      '请给出综合风险等级：高/中/低，并说明主要风险因素。',
   },
 ];
 
@@ -402,9 +426,11 @@ e. 综合判断
 export class Pipeline {
   code: string;
   sessionId: string;
+  force: boolean;
 
-  constructor(code: string) {
+  constructor(code: string, force?: boolean) {
     this.code = code;
+    this.force = force ?? false;
     this.sessionId = sessionService.createSession();
   }
 
@@ -471,9 +497,27 @@ export class Pipeline {
    * @param date - 报告日期（yyyy-MM-dd）
    * @returns 创建的客观报告信息
    */
-  async stage2ObjectiveReport(date: string): Promise<Stage2Result> {
+  async stage2ObjectiveReport(date: string, force?: boolean): Promise<Stage2Result> {
     const db = getDatabase();
     const { code, sessionId } = this;
+
+    // 检查当天是否已生成过（避免重复 LLM 调用）
+    if (!force) {
+      const existing = db
+        .select()
+        .from(dailyAnalysisReport)
+        .where(and(eq(dailyAnalysisReport.code, code), eq(dailyAnalysisReport.date, date)))
+        .get();
+      if (existing) {
+        console.log(`[pipeline] 客观报告已存在 (${code} ${date})，跳过 Stage 2`);
+        return {
+          id: existing.id,
+          summary: existing.summary,
+          indicators: existing.indicators,
+          signals: existing.signals,
+        };
+      }
+    }
 
     // 1. 获取股票信息
     const stockInfo = await stockService.getStockByCode(code);
@@ -635,9 +679,26 @@ export class Pipeline {
    * @param date - 报告日期（yyyy-MM-dd）
    * @returns 舆情报告信息
    */
-  async stage3Sentiment(date: string): Promise<Stage3Result> {
+  async stage3Sentiment(date: string, force?: boolean): Promise<Stage3Result> {
     const db = getDatabase();
     const code = this.code;
+
+    // 检查当天是否已获取过（舆情变化慢，避免重复 API 调用）
+    if (!force) {
+      const existing = db
+        .select()
+        .from(sentimentReport)
+        .where(and(eq(sentimentReport.code, code), eq(sentimentReport.date, date)))
+        .get();
+      if (existing) {
+        console.log(`[pipeline] 舆情报告已存在 (${code} ${date})，跳过 Stage 3`);
+        return {
+          id: existing.id,
+          report: existing.report,
+          sources: JSON.parse(existing.sources || '[]'),
+        };
+      }
+    }
 
     // 获取股票名称
     const stockInfo = await stockService.getStockByCode(code);
@@ -1040,12 +1101,12 @@ export class Pipeline {
 
     // Stage 2: 客观报告
     console.log(`[pipeline] Stage 2/5 — 客观报告: ${code}`);
-    const stage2 = await this.stage2ObjectiveReport(date);
+    const stage2 = await this.stage2ObjectiveReport(date, this.force);
     console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
 
     // Stage 3: 舆情获取
     console.log(`[pipeline] Stage 3/5 — 舆情获取: ${code}`);
-    const stage3 = await this.stage3Sentiment(date);
+    const stage3 = await this.stage3Sentiment(date, this.force);
     console.log(`[pipeline] Stage 3 完成: id=${stage3.id}`);
 
     // Stage 4: 多角色分析
@@ -1126,23 +1187,26 @@ export async function stage1FetchData(code: string): Promise<Stage1Result> {
 /**
  * 运行完整流水线（Stage 1→5，向后兼容包装）。
  *
- * @param code - 股票代码
+ * @param code  - 股票代码
+ * @param force - true 则强制重新执行（忽略已有缓存）
  * @returns 流水线运行结果（日期、流水线 ID、最终报告 ID）
  */
-export async function runFullPipeline(code: string): Promise<PipelineResult> {
-  const pipeline = new Pipeline(code);
+export async function runFullPipeline(code: string, force?: boolean): Promise<PipelineResult> {
+  const pipeline = new Pipeline(code, force);
   return pipeline.runFull();
 }
 
 /**
  * 运行本地分析（Stage 1→2，向后兼容包装）。
  *
- * @param code - 股票代码
+ * @param code  - 股票代码
+ * @param force - true 则强制重新执行
  * @returns 分析结果（日期和报告 ID）
  */
 export async function runLocalAnalysis(
   code: string,
+  force?: boolean,
 ): Promise<LocalAnalysisResult> {
-  const pipeline = new Pipeline(code);
+  const pipeline = new Pipeline(code, force);
   return pipeline.runLocalAnalysis();
 }
