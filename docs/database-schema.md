@@ -11,6 +11,20 @@
 - **浮点数**：使用 `REAL`
 - **禁用 `ON DELETE CASCADE`**：业务层处理关联数据，避免意外级联删除
 
+## 迁移管理
+
+使用 Drizzle Kit 管理数据库迁移。
+
+```bash
+# 生成迁移文件（修改 schema.ts 后运行）
+npm run db:generate
+
+# 执行迁移到目标数据库
+npm run db:migrate
+```
+
+配置位于 `packages/server/drizzle.config.ts`，目标数据库路径从 `.env` 的 `DB_PATH` 读取。
+
 ---
 
 ## 表定义
@@ -29,7 +43,7 @@ CREATE TABLE pool (
 );
 
 CREATE INDEX idx_pool_name ON pool(name);
-CREATE INDEX idx_pool_signal ON pool(signal);
+CREATE INDEX idx_pool_signal ON pool(pool_signal);
 ```
 
 ### PoolStock — 股池与股票的关联（M:N）

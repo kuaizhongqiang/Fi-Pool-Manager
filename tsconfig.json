@@ -11,5 +11,10 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
-  }
+  },
+  "references": [
+    { "path": "packages/server" },
+    { "path": "packages/cli" },
+    { "path": "packages/plugin" }
+  ]
 }
