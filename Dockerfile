@@ -1,4 +1,5 @@
 FROM node:22-alpine AS builder
+RUN apk add --no-cache python3 build-base  # better-sqlite3 编译需要
 WORKDIR /app
 COPY package*.json ./
 COPY packages/server/package.json packages/server/

@@ -351,10 +351,16 @@ export async function refreshData(
 
   for (const c of codes) {
     try {
+      // 0. 确保 stock 记录存在（首次使用会自动创建）
+      const existingStock = db.select({ code: stock.code }).from(stock).where(eq(stock.code, c)).get();
+      if (!existingStock) {
+        db.insert(stock).values({ code: c, name: '', currentPrice: 0 }).run();
+      }
+
       // 1. 获取实时行情并更新 stock 表
       const { price, name } = await fetchRealTimeQuote(c);
       db.update(stock)
-        .set({ currentPrice: price, updatedAt: sql`datetime('now')` })
+        .set({ name, currentPrice: price, updatedAt: sql`datetime('now')` })
         .where(eq(stock.code, c))
         .run();
 

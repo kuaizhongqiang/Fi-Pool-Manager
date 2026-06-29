@@ -180,6 +180,20 @@ export async function getConfig(key?: string) {
       config[ek] = process.env[ek]!;
     }
   }
+
+  // 脱敏处理：对包含 KEY/TOKEN/SECRET/PASSWORD 的字段掩码显示
+  for (const key of Object.keys(config)) {
+    const upper = key.toUpperCase();
+    if (upper.includes('KEY') || upper.includes('TOKEN') || upper.includes('SECRET') || upper.includes('PASSWORD')) {
+      const val = config[key];
+      if (val.length > 8) {
+        config[key] = val.slice(0, 4) + '****' + val.slice(-4);
+      } else if (val.length > 0) {
+        config[key] = val.slice(0, 2) + '****';
+      }
+    }
+  }
+
   return { config };
 }
 
