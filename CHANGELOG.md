@@ -1,3 +1,31 @@
+# 1.0.0 (2026-06-29)
+
+
+### Bug Fixes
+
+* E2E 测试 & 迁移 SQL 修复 ([46dc0aa](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/46dc0aa872fb89ccc90e54380dc3be1eab9bb289))
+* **M4:** Config 表与 .env 双源同步 ([51f3242](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/51f3242c7fd112177d2b7e367f1e5264c076635c)), closes [#55](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/55)
+* 代码审查 7 个 Issue 修复 ([055f2d9](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/055f2d95f7152c31db5e301c197345db41a7f031))
+* 代码审查 7 个 Issue 修复 ([6e7e70e](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/6e7e70e8b098df0f3e703902ba0ccde044e63731)), closes [#49](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/49) [#50](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/50) [#51](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/51) [#52](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/52) [#53](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/53) [#54](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/54) [#55](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/55)
+* 按 PM 审核报告修复文档问题 ([55c72f0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/55c72f061b74f0cc331402ddd2c4c799dce3ab04))
+
+
+### Features
+
+* npm publish — fi-pool-server + fi-pool-cli ([bb9d889](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/bb9d8890f81d220859b0024f9ef040e98a047f0c))
+* npm publish — fi-pool-server + fi-pool-cli v0.1.0 ([ec0f753](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/ec0f7538ab9a2359af1e38076543029762098c86))
+* npm publish 配置 ([e706e4a](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/e706e4a3ca24e76699d274ae5c1c98d38ac41cf5))
+* **phase-1:** 项目基础设施 ([e1f29e4](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/e1f29e43754f3a11164d2bfc32499df677d2833a))
+* **phase-2:** 数据层 — 腾讯财经接口对接与 CRUD 服务 ([2b1f0f2](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/2b1f0f22daa9d04a09e37aae82d6d424c3930d7e))
+* **phase-3:** CLI 命令 — Commander.js 全量交互命令 ([5fb2824](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/5fb2824a339d78eee314c908f44150105eff0419))
+* **phase-4:** 技术分析引擎 — 指标算法与信号检测 ([86ca17f](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/86ca17f6288bfad2e60c1962d57afe8b6d18eeef))
+* **phase-5:** LLM 集成 — LM Studio API, Session 管理, 字数控制, 向量检索 ([ca220cd](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/ca220cd9a206ddcdc97dfd1b28fa3f763eec6f9f))
+* **phase-6:** 分析流水线 — Stage 1~5 全流程编排 ([002cde3](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/002cde3b1da7cd9173ef907e7390a8af516dc6fc))
+* **phase-7:** OpenClaw 插件 — 29 个 MCP 工具注册 ([9636504](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/9636504783badc64c18d336c789f1bb53c07d9fa))
+* **phase-8-extension:** CI/CD 增强 + 全量测试 + 项目管理 Skill ([1baa650](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/1baa6505fe07bd7b1589c7a503c6a59f8cc0209b)), closes [#43](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/43) [#44](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/44) [#45](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/45) [#46](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/46)
+* **phase-8:** 测试框架、CI 配置与部署脚本 ([7e38e74](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/7e38e74a66c60933fda364e39abb99c816c12cd6))
+* 接入 DashScope 舆情搜索 API，阻塞项 P1 解决 ([ddabbba](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/ddabbbac14f84ae2e8169a03a7c0ec7fbf6c1fee)), closes [#13](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/13)
+
 # [0.2.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.1.0...v0.2.0) (2026-06-29)
 
 
