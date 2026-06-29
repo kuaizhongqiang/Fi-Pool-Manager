@@ -1,3 +1,11 @@
+## [1.1.1](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.1.0...v1.1.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* 8 个 OpenClaw 测试 Issue 修复 ([db102f8](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/db102f883541e856640177734e95a9c99f584764)), closes [#60](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/60) [#65](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/65) [#61](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/61) [#62](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/62) [#63](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/63) [#64](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/64) [#66](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/66) [#67](https://github.com/kuaizhongqiang/Fi-Pool-Manager/issues/67)
+* 8 个 OpenClaw 测试反馈 Issue 修复 ([a574297](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/a5742978507d388f358183daa43338470dec622d))
+
 # [1.1.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.0.0...v1.1.0) (2026-06-29)
 
 
