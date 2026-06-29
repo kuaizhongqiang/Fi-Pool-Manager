@@ -11,7 +11,7 @@ import * as stockService from '../services/stock.js';
 import * as dailyInfoService from '../services/daily-info.js';
 import * as llmService from '../services/llm.js';
 import { getDatabase, getDbPath } from '../db/index.js';
-import { dailyAnalysisReport, finalReport, stock, pool } from '../db/schema.js';
+import { dailyAnalysisReport, finalReport, dailyInfo, stock, pool } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { VERSION } from '../index.js';
 import { existsSync, statSync } from 'fs';
@@ -181,10 +181,10 @@ export async function getSystemStatus() {
   // 统计股池数量
   const poolCount = db.select({ count: sql<number>`count(*)` }).from(pool).get()?.count ?? 0;
 
-  // 获取最新行情更新时间
+  // 获取最新行情更新时间（从 daily_info 获取真实数据日期）
   const latestDaily = db
-    .select({ maxDate: sql<string>`max(${dailyAnalysisReport.date})` })
-    .from(dailyAnalysisReport)
+    .select({ maxDate: sql<string>`max(${dailyInfo.date})` })
+    .from(dailyInfo)
     .get();
 
   // 数据库文件大小

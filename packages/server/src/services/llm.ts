@@ -100,23 +100,47 @@ export async function chatCompletion(
   // 使用 fetchWithRetry：传入一个返回 Promise 的函数
   // LLM 推理可能较慢（尤其首次加载模型），超时设为 120s
   const LLM_TIMEOUT = 120_000;
-  const data = await fetchWithRetry<ChatCompletionResponse>(
-    () =>
-      fetchJson<ChatCompletionResponse>(
-        url,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
+  let data: ChatCompletionResponse;
+  try {
+    data = await fetchWithRetry<ChatCompletionResponse>(
+      () =>
+        fetchJson<ChatCompletionResponse>(
+          url,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
           },
-          body: JSON.stringify(body),
-        },
-        undefined, // signal
-        LLM_TIMEOUT,
-      ),
-    2,
-    1000,
-  );
+          undefined, // signal
+          LLM_TIMEOUT,
+        ),
+      2,
+      1000,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const baseUrl = process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+    // 友好化常见错误
+    if (msg.includes('fetch failed') || msg.includes('connect') || msg.includes('ECONNREFUSED')) {
+      throw new Error(
+        `LLM 连接失败（${baseUrl}），请确认：\n` +
+        `  1. LM Studio 是否已启动\n` +
+        `  2. LLM_BASE_URL 配置是否正确（当前: ${baseUrl}）\n` +
+        `  3. 模型是否已加载（${DEFAULT_MODEL}）\n` +
+        `  测试连接: curl ${baseUrl}/v1/models`,
+      );
+    }
+    if (msg.includes('timed out') || msg.includes('abort') || msg.includes('timeout')) {
+      throw new Error(
+        `LLM 请求超时（${LLM_TIMEOUT / 1000}s），请确认：\n` +
+        `  1. 模型推理速度是否正常\n` +
+        `  2. 可尝试减小 LLM_CONTEXT_LIMIT（当前: ${CONTEXT_LIMIT}）`,
+      );
+    }
+    throw new Error(`LLM 调用失败: ${msg}`);
+  }
 
   if (!data.choices || data.choices.length === 0) {
     throw new Error(`LLM 返回空结果: 无 choices (model=${body.model})`);

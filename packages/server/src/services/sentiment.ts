@@ -86,6 +86,8 @@ export async function fetchSentiment(
               stream: false,
             }),
           },
+          undefined,   // signal
+          60_000,      // 舆情搜索超时 60s（联网搜索较慢）
         ),
       1,   // 重试 1 次（共 2 次）
       2000,
