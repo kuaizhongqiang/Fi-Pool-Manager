@@ -1,19 +1,19 @@
 /**
- * @fi-pool/plugin
+ * fi-pool-plugin
  * Fi-Pool-Manager OpenClaw 插件入口
  *
- * 将 @fi-pool/server 的能力暴露为 OpenClaw 插件，
+ * 将 fi-pool-server 的能力暴露为 OpenClaw 插件，
  * 通过 MCP 协议供 Claude、Cursor 等 AI 代理调用。
  *
  * 公开 29 个工具，覆盖管理、查询、命令、执行、辅助五大类。
  */
 
-import { ensureDatabase } from '@fi-pool/server/db/migrate.js';
-import * as manager from '@fi-pool/server/tools/manager.js';
-import * as query from '@fi-pool/server/tools/query.js';
-import * as cmd from '@fi-pool/server/tools/command.js';
-import * as exec from '@fi-pool/server/tools/execute.js';
-import * as aux from '@fi-pool/server/tools/auxiliary.js';
+import { ensureDatabase } from 'fi-pool-server/db/migrate.js';
+import * as manager from 'fi-pool-server/tools/manager.js';
+import * as query from 'fi-pool-server/tools/query.js';
+import * as cmd from 'fi-pool-server/tools/command.js';
+import * as exec from 'fi-pool-server/tools/execute.js';
+import * as aux from 'fi-pool-server/tools/auxiliary.js';
 
 /** 从 JSON Schema 工具定义中提取 handler 的返回类型 */
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
