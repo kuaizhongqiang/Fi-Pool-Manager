@@ -1,0 +1,42 @@
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build --workspaces
+
+      - run: npm run test --workspace=packages/server
+
+      # Option A: npm publish (only @fi-pool/cli)
+      # - name: Publish CLI package
+      #   run: |
+      #     npm publish --workspace=packages/cli
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Option B: Docker build and push to ghcr.io
+      # - name: Build Docker
+      #   run: docker build -t ghcr.io/${{ github.repository }}:${{ github.ref_name }} .
+
+      # - name: Push Docker
+      #   run: docker push ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+
+      # Create GitHub Release
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

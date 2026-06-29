@@ -9,14 +9,17 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20, 22]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install dependencies
@@ -30,3 +33,32 @@ jobs:
 
       - name: Run tests
         run: npm run test --workspace=packages/server
+
+      - name: Run test coverage
+        run: npm run test:coverage --workspace=packages/server
+
+      - name: Upload coverage to Actions Summary
+        run: |
+          echo "### Coverage Report" >> $GITHUB_STEP_SUMMARY
+          cat packages/server/coverage/coverage-summary.json 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo "No coverage report found" >> $GITHUB_STEP_SUMMARY
+
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        run: |
+          echo "::group::Checking commit messages"
+          git log --format="%s" "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" | while read -r line; do
+            echo "Checking: $line"
+            if ! echo "$line" | grep -qE '^(feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert)(\([a-z]+\))?!?:\s'; then
+              if ! echo "$line" | grep -qE '^(Merge|WIP|fixup!|squash!)\s'; then
+                echo "::warning::Commit message does not follow Conventional Commits: $line"
+              fi
+            fi
+          done
+          echo "::endgroup::"
