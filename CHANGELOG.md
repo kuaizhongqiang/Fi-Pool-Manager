@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.0.0...v1.1.0) (2026-06-29)
+
+
+### Features
+
+* Docker 容器化 — HTTP 服务入口 + ghcr.io 自动推送 ([b8510fd](https://github.com/kuaizhongqiang/Fi-Pool-Manager/commit/b8510fd0aec68182d2af8e5392849d6932a67a52))
+
 # 1.0.0 (2026-06-29)
 
 
