@@ -6,6 +6,15 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./db/migrate.js": "./dist/db/migrate.js",
+    "./tools/manager.js": "./dist/tools/manager.js",
+    "./tools/query.js": "./dist/tools/query.js",
+    "./tools/command.js": "./dist/tools/command.js",
+    "./tools/execute.js": "./dist/tools/execute.js",
+    "./tools/auxiliary.js": "./dist/tools/auxiliary.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
