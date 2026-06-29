@@ -1,0 +1,173 @@
+/**
+ * LLM 推理服务 — LM Studio (OpenAI 兼容 API)
+ *
+ * 通过 LM Studio 的 OpenAI 兼容 HTTP 接口调用本地 LLM 模型。
+ * 支持聊天补全、模型列表查询和连接检查。
+ *
+ * @module services/llm
+ */
+
+import { fetchJson, fetchWithRetry } from '../utils/http-client.js';
+
+// ─── 配置 ────────────────────────────────────────────────────────
+
+/** LM Studio 服务地址，默认 http://127.0.0.1:1234 */
+const BASE_URL = process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+
+/** 默认使用的模型名称 */
+const DEFAULT_MODEL = process.env.LLM_MODEL || 'qwen/qwen3.5-9b';
+
+/** LLM 上下文窗口限制（token），默认 262144 */
+const CONTEXT_LIMIT = parseInt(process.env.LLM_CONTEXT_LIMIT || '262144', 10);
+
+// ─── 类型 ────────────────────────────────────────────────────────
+
+/** 聊天补全请求 body */
+interface ChatCompletionRequest {
+  model: string;
+  messages: { role: string; content: string }[];
+  max_tokens?: number;
+  temperature?: number;
+  stream: false;
+}
+
+/** 聊天补全响应 */
+interface ChatCompletionResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: {
+    index: number;
+    message: { role: string; content: string };
+    finish_reason: string;
+  }[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+}
+
+/** 模型列表响应 */
+interface ModelListResponse {
+  object: string;
+  data: { id: string; object: string; created: number; owned_by: string }[];
+}
+
+// ─── 公开 API ────────────────────────────────────────────────────
+
+/**
+ * 调用 LM Studio 聊天补全 API。
+ *
+ * 向本地 LLM 发送消息列表并获取回复文本。
+ * 内置超时（60s）和重试（2 次）机制。
+ *
+ * @param params.model     - 模型名称，不传则使用环境变量 LLM_MODEL
+ * @param params.messages  - 对话消息列表（role: system/user/assistant）
+ * @param params.maxTokens - 最大生成 token 数，不传则由模型决定
+ * @param params.temperature - 采样温度，默认 0.7
+ * @param params.sessionId   - 会话 ID（透传，暂未用于 LM Studio 本身）
+ * @returns LLM 回复文本
+ *
+ * @throws 当 LM Studio 不可达、返回错误或结果为空白时抛出
+ *
+ * @example
+ * const reply = await chatCompletion({
+ *   messages: [{ role: 'user', content: '分析贵州茅台' }],
+ *   maxTokens: 500,
+ * });
+ */
+export async function chatCompletion(
+  params: {
+    model?: string;
+    messages: { role: string; content: string }[];
+    maxTokens?: number;
+    temperature?: number;
+    sessionId?: string;
+  },
+): Promise<string> {
+  const url = `${BASE_URL}/v1/chat/completions`;
+
+  const body: ChatCompletionRequest = {
+    model: params.model || DEFAULT_MODEL,
+    messages: params.messages,
+    max_tokens: params.maxTokens,
+    temperature: params.temperature ?? 0.7,
+    stream: false,
+  };
+
+  // 使用 fetchWithRetry：传入一个返回 Promise 的函数
+  const data = await fetchWithRetry<ChatCompletionResponse>(
+    () =>
+      fetchJson<ChatCompletionResponse>(
+        url,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      ),
+    2,
+    1000,
+  );
+
+  if (!data.choices || data.choices.length === 0) {
+    throw new Error(`LLM 返回空结果: 无 choices (model=${body.model})`);
+  }
+
+  const content = data.choices[0].message?.content;
+  if (content === undefined || content === null) {
+    throw new Error(`LLM 返回空消息内容 (model=${body.model})`);
+  }
+
+  return content;
+}
+
+/**
+ * 列出 LM Studio 中可用的模型。
+ *
+ * @returns 模型 ID 数组
+ *
+ * @example
+ * const models = await listModels();
+ * // ['qwen/qwen3.5-9b', '...']
+ */
+export async function listModels(): Promise<string[]> {
+  const url = `${BASE_URL}/v1/models`;
+
+  const data = await fetchJson<ModelListResponse>(url);
+
+  if (!data.data || !Array.isArray(data.data)) {
+    throw new Error(`模型列表响应格式异常: ${JSON.stringify(data).slice(0, 200)}`);
+  }
+
+  return data.data.map((m) => m.id);
+}
+
+/**
+ * 检查 LM Studio 服务是否可达。
+ *
+ * 通过调用 listModels() 验证连接，不抛出异常即为可达。
+ *
+ * @returns true 表示连接正常，false 表示不可达
+ */
+export async function checkConnection(): Promise<boolean> {
+  try {
+    await listModels();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 获取 LLM 上下文窗口限制。
+ *
+ * @returns 环境变量 LLM_CONTEXT_LIMIT 的值（默认 262144）
+ */
+export function getContextLimit(): number {
+  return CONTEXT_LIMIT;
+}
