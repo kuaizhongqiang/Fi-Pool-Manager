@@ -143,7 +143,7 @@ fi-pool-manager/
 
 ## 版本
 
-遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。当前版本 `0.2.0-alpha.1`。
+遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。当前版本 `0.1.0`。
 
 ## 许可
 
