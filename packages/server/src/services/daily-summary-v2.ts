@@ -353,6 +353,7 @@ async function buildSummaryPrompt(
     const historyResults = await embeddingService.searchSimilar({
       query: `${date} A股市场异常分析综述 股票池`,
       type: 'daily_summary',
+      dateBefore: date, // 排除今天，只查历史
       limit: 2,
       minScore: 0.6,
     });
