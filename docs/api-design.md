@@ -438,3 +438,26 @@
 
 返回：{ success: true }
 ```
+
+### generateDailySummary
+
+生成每日综合股池综述。
+
+```
+入参：
+  date?: string — 目标日期 yyyy-MM-dd（默认今天）
+
+返回：
+  {
+    date: string,
+    pools: [{
+      poolId, poolName,
+      stocks: [{ code, name, currentPrice, signal, summary, finalSummary }],
+      bullish, bearish, neutral
+    }],
+    overall: { totalStocks, totalBullish, totalBearish, totalNeutral },
+    llmSummary: string  // LLM 生成的综述文本
+  }
+```
+
+> **自动触发**：在 `runPoolFullPipeline` 执行完成后自动调用。

@@ -56,6 +56,7 @@ export * as sentimentService from './services/sentiment.js';
 export * as sessionService from './services/session.js';
 export * as wordCountService from './services/word-count.js';
 export * as embeddingService from './services/embedding.js';
+export * as dailySummaryService from './services/daily-summary.js';
 
 // ─── 流水线编排器（独立入口点）─────────────────────────────
 

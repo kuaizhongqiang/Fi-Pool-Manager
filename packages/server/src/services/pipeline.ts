@@ -247,6 +247,30 @@ function parseLLMJsonResponse<T>(text: string): T | null {
   return null;
 }
 
+/**
+ * 将 LLM 返回的 fullReport 值规范化为纯文本字符串。
+ *
+ * LLM 有时会返回嵌套 JSON 对象（包含自身的 summary/fullReport 字段）而非纯文本，
+ * 此函数递归提取确保最终存储的是字符串，避免双重序列化。
+ *
+ * @param value - LLM 返回的 fullReport 值（可能为 string 或 object）
+ * @returns 规范化后的纯文本字符串
+ */
+function normalizeFullReport(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    // 如果嵌套对象包含自己的 fullReport 字段，递归提取
+    if (typeof obj.fullReport === 'string') return obj.fullReport;
+    if (typeof obj.fullReport === 'object') return normalizeFullReport(obj.fullReport);
+    // 有 summary 字段则优先使用
+    if (typeof obj.summary === 'string') return obj.summary;
+    // 兜底：序列化为 JSON 字符串
+    return JSON.stringify(value);
+  }
+  return String(value ?? '');
+}
+
 // ─── Prompt 构造 ─────────────────────────────────────────────────
 
 /**
@@ -476,6 +500,17 @@ export class Pipeline {
     // 更新股票最新价格
     const latest = ohlcvData[ohlcvData.length - 1];
     await stockService.upsertStock(this.code, stockInfo.name, latest.close);
+
+    // 检查数据是否陈旧
+    const today = new Date();
+    const latestDt = new Date(latest.date);
+    const daysDiff = Math.round((today.getTime() - latestDt.getTime()) / 86400000);
+    if (daysDiff > 10) {
+      console.warn(
+        `  ⚠ [${this.code}] 数据陈旧: 最新交易日 ${latest.date}，距今 ${daysDiff} 天。`,
+        `股票可能已停牌或数据源未更新，后续分析将基于陈旧数据。`
+      );
+    }
 
     return {
       date: latest.date,
@@ -1001,16 +1036,12 @@ export class Pipeline {
     let fullReport = llmResponse;
     let roleSummary = '[]';
 
-    const parsed = parseLLMJsonResponse<{
-      summary?: string;
-      fullReport?: string;
-      roleSummary?: { role: string; keyPoint: string }[];
-    }>(llmResponse);
+    const parsed = parseLLMJsonResponse<Record<string, unknown>>(llmResponse);
 
     if (parsed) {
-      if (parsed.summary) summary = parsed.summary;
-      if (parsed.fullReport) fullReport = parsed.fullReport;
-      if (parsed.roleSummary) roleSummary = JSON.stringify(parsed.roleSummary);
+      if (typeof parsed.summary === 'string') summary = parsed.summary;
+      if (parsed.fullReport) fullReport = normalizeFullReport(parsed.fullReport);
+      if (Array.isArray(parsed.roleSummary)) roleSummary = JSON.stringify(parsed.roleSummary);
     }
 
     // 8. 写入 final_report 表

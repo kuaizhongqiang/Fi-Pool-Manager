@@ -376,6 +376,18 @@ export async function refreshData(
         volume: ohlcv.volume,
       }));
 
+      // 3. 检查数据是否陈旧（最新交易日距今超过 10 天）
+      const latestDate = records[records.length - 1].date;
+      const today = new Date();
+      const latestDt = new Date(latestDate);
+      const daysDiff = Math.round((today.getTime() - latestDt.getTime()) / 86400000);
+      if (daysDiff > 10) {
+        console.warn(
+          `  ⚠ [${c}] 数据可能已陈旧: 最新交易日 ${latestDate}，距今 ${daysDiff} 天。`,
+          `股票可能已停牌或数据源未更新。`
+        );
+      }
+
       const n = await upsertDailyInfo(records);
       totalUpdated += n;
     } catch (err) {

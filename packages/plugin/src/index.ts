@@ -500,7 +500,7 @@ const tools: ToolDefinition[] = [
     },
   },
 
-  // ── 辅助类（6） ─────────────────────────────────────────────
+  // ── 辅助类（7） ─────────────────────────────────────────────
 
   {
     name: 'help',
@@ -513,6 +513,20 @@ const tools: ToolDefinition[] = [
     },
     handler: async (args) => {
       return aux.help(args.command ? String(args.command) : undefined);
+    },
+  },
+
+  {
+    name: 'generate_daily_summary',
+    description: '生成每日综合股池综述，汇总所有股池信号和分析报告，调用 LLM 生成完整投资回顾',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: '可选目标日期 yyyy-MM-dd（默认今天）' },
+      },
+    },
+    handler: async (args) => {
+      return aux.generateDailySummaryReport(args.date ? String(args.date) : undefined);
     },
   },
 
@@ -594,7 +608,7 @@ const tools: ToolDefinition[] = [
 
 export default {
   name: 'fi-pool-manager',
-  version: '0.1.0',
+  version: '0.2.0',
   description: 'A股股池管理 — 管理股票池、获取行情、技术分析、LLM 分析报告',
 
   /** MCP 工具定义列表 */

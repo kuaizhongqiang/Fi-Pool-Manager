@@ -13,6 +13,7 @@ import { eq } from 'drizzle-orm';
 import { VERSION } from '../index.js';
 import * as poolService from '../services/pool.js';
 import * as stockService from '../services/stock.js';
+import { generateDailySummary } from '../services/daily-summary.js';
 
 /**
  * 输出所有可用的命令和工具帮助信息。
@@ -55,6 +56,7 @@ export async function help(command?: string): Promise<string> {
     '  show_version     输出版本信息',
     '  get_config       查看配置',
     '  set_config       设置配置',
+    '  generate_daily_summary  生成每日综合股池综述',
     '',
     '报告输出命令：',
     '  output_analysis_report  输出客观分析报告',
@@ -223,4 +225,17 @@ export async function setConfig(key: string, value: string) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false as const, error: { code: 'DB_ERROR', message } };
   }
+}
+
+/**
+ * 生成每日综合股池综述。
+ *
+ * 汇总所有股池的最新分析信号和报告，调用 LLM 生成完整的每日投资综述。
+ * 流水线完成时会自动触发，也可手动调用。
+ *
+ * @param date - 可选目标日期（yyyy-MM-dd），默认今天
+ * @returns 生成的 DailySummary 对象
+ */
+export async function generateDailySummaryReport(date?: string) {
+  return generateDailySummary(date, false);
 }

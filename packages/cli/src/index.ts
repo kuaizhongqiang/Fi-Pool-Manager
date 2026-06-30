@@ -8,8 +8,57 @@
  * 所有命令调用 fi-pool-server 的核心逻辑。
  */
 
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { existsSync } from 'fs';
+import { resolve, sep } from 'path';
+import { homedir } from 'os';
 import { Command } from 'commander';
+
+// ─── .env 自动查找 ───────────────────────────────────────────────
+//
+// 全局安装后，CLI 可能在任意目录运行，需要向上递归查找 .env。
+// 查找顺序：CWD → 父目录 → 祖父目录 → ... → ~/.fi-pool/.env
+function resolveEnvFile(): string | undefined {
+  // 1. 从 CWD 向上递归查找 .env
+  let dir = process.cwd();
+  const root = resolve(dir.split(sep)[0] || '/'); // 文件系统根 (win: "C:\\", posix: "/")
+  while (true) {
+    const candidate = resolve(dir, '.env');
+    if (existsSync(candidate)) return candidate;
+    const parent = resolve(dir, '..');
+    if (parent === dir || parent === root || parent.length >= dir.length) break;
+    dir = parent;
+  }
+
+  // 2. 备用：~/.fi-pool/.env
+  const homeEnv = resolve(homedir(), '.fi-pool', '.env');
+  if (existsSync(homeEnv)) return homeEnv;
+
+  // 3. 备用：/etc/fi-pool/.env
+  const etcEnv = '/etc/fi-pool/.env';
+  if (existsSync(etcEnv)) return etcEnv;
+
+  return undefined; // 没找到就靠默认值
+}
+
+const envPath = resolveEnvFile();
+if (envPath) {
+  dotenv.config({ path: envPath });
+} else {
+  // 兜底：尝试加载 CWD 的 .env（原来的行为）
+  dotenv.config();
+}
+
+// 支持 --config 显式指定配置文件路径
+const configIndex = process.argv.indexOf('--config');
+if (configIndex !== -1 && configIndex + 1 < process.argv.length) {
+  const explicitPath = resolve(process.cwd(), process.argv[configIndex + 1]);
+  if (existsSync(explicitPath)) {
+    dotenv.config({ path: explicitPath, override: true });
+  }
+}
+// ─────────────────────────────────────────────────────────────────
+
 import { ensureDatabase } from 'fi-pool-server/db/migrate.js';
 import * as manager from 'fi-pool-server/tools/manager.js';
 import * as query from 'fi-pool-server/tools/query.js';
@@ -87,7 +136,8 @@ const program = new Command();
 program
   .name('fi-pool')
   .description('A股股池管理服务端')
-  .version('0.1.0');
+  .version('0.2.0')
+  .option('--config <path>', '指定 .env 配置文件路径（默认自动向上递归查找）');
 
 // ─── Pool Management ────────────────────────────────────────────
 
@@ -507,6 +557,19 @@ program
     try {
       const helpText = await aux.help(command);
       printReport(helpText);
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('daily-summary')
+  .description('生成每日综合股池综述')
+  .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
+  .action(async (date?: string) => {
+    try {
+      const result = await aux.generateDailySummaryReport(date);
+      printJson(result);
     } catch (err) {
       printError((err as Error).message);
     }

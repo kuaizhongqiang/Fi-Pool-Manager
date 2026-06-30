@@ -23,4 +23,20 @@ npx fi-pool report --code 600519 --mode overview
 - **查询类**：list-pools, get-stock, get-daily, get-report, status
 - **命令类**：output-report, output-final, semantic-search, session
 - **执行类**：run-analysis, run-pipeline, refresh-data
-- **辅助类**：help, list, version, config
+- **辅助类**：help, list, version, config, daily-summary
+
+## 新增命令
+
+### daily-summary
+
+生成每日综合股池综述，汇总所有股池的分析信号和报告：
+
+```bash
+# 生成今天的综述
+fi-pool daily-summary
+
+# 生成指定日期的综述
+fi-pool daily-summary 2026-06-30
+```
+
+在运行 `run-pool-pipeline` 命令后，每日综述会自动触发输出。
