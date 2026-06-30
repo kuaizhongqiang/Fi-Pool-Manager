@@ -24,19 +24,9 @@ jobs:
       - run: npm ci
 
       # Build in order: server → cli + plugin
+      # npm workspace 将 server hoist 到根 node_modules，cli/plugin 从根解析类型
       - name: Build server
         run: npm run build --workspace=packages/server
-
-      # CI 中 npm ci 会把 fi-pool-server 解析为已发布的 npm 包（非 workspace link），
-      # 导致 cli/plugin 编译时使用旧版类型声明而失败。
-      # 此处手动同步 server dist 到依赖方。
-      - name: Sync server dist to dependent workspaces
-        run: |
-          for pkg in packages/cli packages/plugin; do
-            rm -rf "$pkg/node_modules/fi-pool-server/dist"
-            cp -r packages/server/dist "$pkg/node_modules/fi-pool-server/dist"
-            cp packages/server/package.json "$pkg/node_modules/fi-pool-server/package.json"
-          done
 
       - name: Build cli + plugin
         run: npm run build --workspace=packages/cli --workspace=packages/plugin
