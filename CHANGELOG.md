@@ -1,3 +1,9 @@
+# [0.3.3](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.2...v0.3.3) (2026-06-30)
+
+### Bug Fixes
+
+* **embedding**: 模块级常量改为惰性读取，修复 dotenv 加载前初始化问题 (#114)
+
 # [0.3.2](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.1...v0.3.2) (2026-06-30)
 
 ### Bug Fixes

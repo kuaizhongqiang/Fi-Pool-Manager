@@ -15,18 +15,25 @@ import { getDatabase, getSqlite } from '../db/index.js';
 import { vecEmbedding } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 
-// ─── 配置 ────────────────────────────────────────────────────────
+// ─── 配置（惰性读取，避免 dotenv 加载前初始化）─────────────────────
 
-/** Embedding API 地址 */
-const API_URL =
-  process.env.EMBEDDING_API_URL ||
-  'http://127.0.0.1:1234/v1/embeddings';
+/**
+ * Embedding API 地址。
+ * 使用惰性 getter 而非模块级常量，确保 dotenv 加载后的值生效。
+ */
+function getApiUrl(): string {
+  return process.env.EMBEDDING_API_URL || 'http://127.0.0.1:1234/v1/embeddings';
+}
 
-/** Embedding API 认证密钥 */
-const API_KEY = process.env.EMBEDDING_API_KEY || 'not-needed';
+/** Embedding API 认证密钥（惰性读取） */
+function getApiKey(): string {
+  return process.env.EMBEDDING_API_KEY || 'not-needed';
+}
 
-/** 嵌入模型名称 */
-const MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-baai-bge-m3-568m';
+/** 嵌入模型名称（惰性读取） */
+function getModel(): string {
+  return process.env.EMBEDDING_MODEL || 'text-embedding-baai-bge-m3-568m';
+}
 
 // ─── 类型 ────────────────────────────────────────────────────────
 
@@ -115,16 +122,16 @@ export async function getEmbedding(text: string): Promise<number[]> {
   const data = await fetchWithRetry<EmbeddingResponse>(
     () =>
       fetchJson<EmbeddingResponse>(
-        API_URL,
+        getApiUrl(),
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${API_KEY}`,
+            Authorization: `Bearer ${getApiKey()}`,
           },
           body: JSON.stringify({
             input: text,
-            model: MODEL,
+            model: getModel(),
           }),
         },
       ),
@@ -133,7 +140,7 @@ export async function getEmbedding(text: string): Promise<number[]> {
   );
 
   if (!data.data || data.data.length === 0) {
-    throw new Error(`Embedding API 返回空结果 (model=${MODEL})`);
+    throw new Error(`Embedding API 返回空结果 (model=${getModel()})`);
   }
 
   return data.data[0].embedding;
