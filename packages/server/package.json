@@ -37,6 +37,7 @@
     "./tools/execute.js": "./dist/tools/execute.js",
     "./tools/auxiliary.js": "./dist/tools/auxiliary.js",
     "./services/daily-summary.js": "./dist/services/daily-summary.js",
+    "./services/daily-summary-v2.js": "./dist/services/daily-summary-v2.js",
     "./utils/data-freshness.js": "./dist/utils/data-freshness.js"
   },
   "scripts": {
