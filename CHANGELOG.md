@@ -1,3 +1,9 @@
+# [0.3.4](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.3...v0.3.4) (2026-06-30)
+
+### Features
+
+* **api**: 新增 /api/v1/pools、/api/v1/pools/:id/stocks、/api/v1/analysis/batch 端点 (#116)
+
 # [0.3.3](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.2...v0.3.3) (2026-06-30)
 
 ### Bug Fixes
