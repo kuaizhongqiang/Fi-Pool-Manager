@@ -16,6 +16,7 @@ import * as llmService from './llm.js';
 import * as sentimentService from './sentiment.js';
 import * as sessionService from './session.js';
 import * as embeddingService from './embedding.js';
+import { computeAnomalyBase } from '../utils/anomaly.js';
 import { checkDataFreshness } from '../utils/data-freshness.js';
 
 import { getDatabase } from '../db/index.js';
@@ -404,6 +405,7 @@ function buildFinalReportPrompt(params: {
   darIndicators: string;
   srReport?: string;
   roleDiscussions: string;
+  anomalyBase: number;
 }): string {
   const sentimentSection = params.srReport
     ? `\n[舆情分析]\n${params.srReport}`
@@ -435,6 +437,12 @@ c. 市场情绪分析
 d. 风险提示
 e. 综合判断
 
+3. 【异常偏移值】（附加评分）
+根据今日该股票的价格波动、交易量变化和技术信号，
+判断其是否显著偏离常态。
+技术指标推算的基础分为 ${params.anomalyBase.toFixed(1)}（1=正常 ~ 4=显著异常），
+请在此基础上 ±1.0 微调，输出最终异常分。
+
 请按以下JSON格式输出（仅输出JSON，不要额外文字）：
 {
   "summary": "概述内容（200字以内）",
@@ -444,7 +452,8 @@ e. 综合判断
     { "role": "基本面分析师", "keyPoint": "核心观点" },
     { "role": "舆情分析师", "keyPoint": "核心观点" },
     { "role": "风控官", "keyPoint": "核心观点" }
-  ]
+  ],
+  "anomalyScore": ${params.anomalyBase.toFixed(1)}
 }`;
 }
 
@@ -998,7 +1007,29 @@ export class Pipeline {
       )
       .join('\n\n---\n\n');
 
-    // 6. 构造 prompt 并调用 LLM
+    // 6. 计算 anomaly_base 基础异常分
+    let anomalyBase = 1.0;
+    if (dar?.indicators) {
+      try {
+        const indicators = JSON.parse(dar.indicators);
+        const signals = JSON.parse(dar.signals || '{}');
+        anomalyBase = computeAnomalyBase({
+          priceChangePct: indicators.priceChangePct ?? 0,
+          signals: {
+            goldenCross: signals.goldenCross ?? false,
+            deadCross: signals.deadCross ?? false,
+            overbought: signals.overbought ?? false,
+            oversold: signals.oversold ?? false,
+            volumeSpike: signals.volumeSpike ?? false,
+            volumeRatio: signals.volumeRatio ?? 0,
+          },
+        });
+      } catch {
+        // 指标解析失败时使用默认值
+      }
+    }
+
+    // 7. 构造 prompt 并调用 LLM
     const pipelineId = generatePipelineId();
 
     const prompt = buildFinalReportPrompt({
@@ -1008,6 +1039,7 @@ export class Pipeline {
       darIndicators: dar?.indicators || '{}',
       srReport: sr?.report,
       roleDiscussions,
+      anomalyBase,
     });
 
     sessionService.appendMessage(
@@ -1026,10 +1058,11 @@ export class Pipeline {
 
     sessionService.appendMessage(sessionId, 'assistant', llmResponse);
 
-    // 7. 解析 LLM 回复
+    // 8. 解析 LLM 回复
     let summary = llmResponse.slice(0, 500);
     let fullReport = llmResponse;
     let roleSummary = '[]';
+    let anomalyScore = anomalyBase; // 默认使用基础分
 
     const parsed = parseLLMJsonResponse<Record<string, unknown>>(llmResponse);
 
@@ -1037,9 +1070,13 @@ export class Pipeline {
       if (typeof parsed.summary === 'string') summary = parsed.summary;
       if (parsed.fullReport) fullReport = resolveLLMReportValue(parsed.fullReport);
       if (Array.isArray(parsed.roleSummary)) roleSummary = JSON.stringify(parsed.roleSummary);
+      if (typeof parsed.anomalyScore === 'number') {
+        // LLM 在 ±1.0 范围内微调，最终结果限制在 1.0~5.0
+        anomalyScore = Math.min(Math.max(parsed.anomalyScore, 1.0), 5.0);
+      }
     }
 
-    // 8. 写入 final_report 表
+    // 9. 写入 final_report 表
     db.insert(finalReport)
       .values({
         code,
@@ -1048,6 +1085,7 @@ export class Pipeline {
         fullReport,
         roleSummary,
         pipelineId,
+        anomalyScore,
       })
       .onConflictDoUpdate({
         target: [finalReport.code, finalReport.date],
@@ -1056,6 +1094,7 @@ export class Pipeline {
           fullReport,
           roleSummary,
           pipelineId,
+          anomalyScore,
         },
       })
       .run();
