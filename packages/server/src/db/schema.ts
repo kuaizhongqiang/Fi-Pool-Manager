@@ -193,7 +193,7 @@ export const config = sqliteTable('config', {
 
 export const vecEmbedding = sqliteTable('vec_embedding', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  contentType: text('content_type').notNull(), // 'analysis' | 'final'
+  contentType: text('content_type').notNull(), // 'analysis' | 'final' | 'daily_detail' | 'daily_summary'
   contentCode: text('content_code').notNull(), // 股票代码
   contentDate: text('content_date').notNull(), // 报告日期
   contentText: text('content_text').notNull(), // 原始文本（用于溯源）

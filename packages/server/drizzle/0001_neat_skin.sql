@@ -7,7 +7,7 @@ CREATE TABLE `daily_summary` (
 	`overview` text DEFAULT '' NOT NULL,
 	`pipeline_ids` text DEFAULT '[]' NOT NULL,
 	`model_used` text DEFAULT '' NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL
+	`created_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `daily_summary_detail` (
@@ -16,13 +16,13 @@ CREATE TABLE `daily_summary_detail` (
 	`date` text NOT NULL,
 	`dimension` text NOT NULL,
 	`anomaly_desc` text DEFAULT '' NOT NULL,
-	`anomaly_score` real DEFAULT 1 NOT NULL,
+	`anomaly_score` real DEFAULT 1.0 NOT NULL,
 	`key_findings` text DEFAULT '' NOT NULL,
 	`pipeline_id` text DEFAULT '' NOT NULL,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL
+	`created_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE `final_report` ADD `anomaly_score` real DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE `final_report` ADD `anomaly_score` real DEFAULT 1.0 NOT NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX `daily_summary_date_unique` ON `daily_summary` (`date`);--> statement-breakpoint
 CREATE INDEX `idx_ds_date` ON `daily_summary` (`date`);--> statement-breakpoint
 CREATE INDEX `idx_dsd_date` ON `daily_summary_detail` (`date`);--> statement-breakpoint
