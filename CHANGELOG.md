@@ -1,3 +1,14 @@
+# [0.3.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.2.4...v0.3.0) (2026-06-30)
+
+### Features
+
+* **daily-summary**: Token 预算动态截断，修复 #85 400 错误 (3454993), closes #91
+* **pipeline**: 规则引擎 anomaly_base 异常打分 + LLM 微调 (7537e29), closes #92 #93
+* **db**: 新增 daily_summary/daily_summary_detail 表 + final_report.anomaly_score (868c522), closes #94
+* **daily-summary-v2**: 异常筛选 + 多维分析 + prompt 筛选 + 综合报告 + CLI 命令 (4fd1bd6), closes #95 #96 #97 #98 #99 #100
+* **RAG**: 跨日期历史 daily_summary 检索（searchSimilar 增加 dateBefore）(59ba454), closes #101
+* **api**: REST API 端点 + serve CLI 命令 (b7ed7c8), closes #86 #87 #88 #89 #90
+
 ## [1.1.2](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v1.1.1...v1.1.2) (2026-06-29)
 
 
