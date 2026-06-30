@@ -198,26 +198,31 @@ async function collectPoolData(date: string): Promise<PoolSummaryData[]> {
 }
 
 /**
+ * 粗略估算文本的 token 数。
+ * 中文约 2 字符/token，英文约 4 字符/token。
+ */
+function estimateTokens(text: string): number {
+  if (!text) return 0;
+  let cjk = 0;
+  let ascii = 0;
+  for (const ch of text) {
+    if (ch > 'ÿ') cjk++;
+    else ascii++;
+  }
+  return Math.ceil(cjk / 2 + ascii / 4);
+}
+
+/**
  * 构建 LLM 用的 prompt，将所有股池数据格式化为结构化文本。
+ *
+ * 动态截断：根据 LLM 上下文窗口和输出预留，计算每只股票可用的 token 预算，
+ * 超出时从尾部截断分析摘要，保证总 prompt 不超出模型容量，避免 400 错误。
  */
 function buildDailySummaryPrompt(pools: PoolSummaryData[], date: string): string {
-  let poolSections = '';
+  const MAX_INPUT_TOKENS = 3000; // 输出预留 1500 + 格式开销 ~500，扣去后可用输入约 3000
 
-  for (const p of pools) {
-    poolSections += `\n## 股池: ${p.poolName}\n`;
-    poolSections += `看多: ${p.bullish} | 看空: ${p.bearish} | 中性: ${p.neutral}\n\n`;
-
-    for (const s of p.stocks) {
-      const signalLabel = s.signal === 1 ? '📈看多' : s.signal === -1 ? '📉看空' : '➖中性';
-      poolSections += `- ${s.code} ${s.name} (${s.currentPrice}) [${signalLabel}]\n`;
-      poolSections += `  分析摘要: ${s.summary}\n`;
-      if (s.finalSummary) {
-        poolSections += `  综合结论: ${s.finalSummary}\n`;
-      }
-    }
-  }
-
-  return `你是一位资深的A股投资策略分析师。请基于以下 ${date} 的股池分析数据，生成一份每日投资综述。
+  // 先构建 header
+  let header = `你是一位资深的A股投资策略分析师。请基于以下 ${date} 的股池分析数据，生成一份每日投资综述。
 
 ## 格式要求
 - 语言：中文
@@ -231,9 +236,47 @@ function buildDailySummaryPrompt(pools: PoolSummaryData[], date: string): string
 4. **综合研判**：对明日市场的简要展望和策略建议
 
 ## 股池数据
-${poolSections}
+`;
 
-请直接输出综述内容，不要输出 JSON。`;
+  const footer = '\n请直接输出综述内容，不要输出 JSON。';
+  const headerTokens = estimateTokens(header + footer);
+  const stockBudget = Math.max(200, MAX_INPUT_TOKENS - headerTokens);
+  const totalStocks = pools.reduce((a, p) => a + p.stocks.length, 0);
+  const budgetPerStock = totalStocks > 0 ? Math.floor(stockBudget / totalStocks) : stockBudget;
+
+  // 截断辅助：保留开头核心内容，截断到指定 token 预算
+  function truncateToBudget(text: string, budget: number): string {
+    if (!text || budget <= 0) return '';
+    // 先取前 budget*2 字符（中文约 2 字符/token），保证不超
+    const maxLen = Math.max(20, budget * 2);
+    if (estimateTokens(text) <= budget) return text;
+    // 尝试截断到句子边界
+    const truncated = text.slice(0, maxLen);
+    const lastPeriod = Math.max(truncated.lastIndexOf('。'), truncated.lastIndexOf('.'));
+    if (lastPeriod > maxLen * 0.5) return truncated.slice(0, lastPeriod + 1);
+    return truncated;
+  }
+
+  let poolSections = '';
+  for (const p of pools) {
+    poolSections += `\n## 股池: ${p.poolName}\n`;
+    poolSections += `看多: ${p.bullish} | 看空: ${p.bearish} | 中性: ${p.neutral}\n\n`;
+
+    for (const s of p.stocks) {
+      const signalLabel = s.signal === 1 ? '📈看多' : s.signal === -1 ? '📉看空' : '➖中性';
+      poolSections += `- ${s.code} ${s.name} (${s.currentPrice}) [${signalLabel}]\n`;
+
+      // 每只股票 summary 和 finalSummary 共享 budgetPerStock
+      const summaryBudget = Math.floor(budgetPerStock * 0.6);
+      const finalBudget = budgetPerStock - summaryBudget;
+      poolSections += `  分析摘要: ${truncateToBudget(s.summary, Math.max(10, summaryBudget))}\n`;
+      if (s.finalSummary) {
+        poolSections += `  综合结论: ${truncateToBudget(s.finalSummary, Math.max(10, finalBudget))}\n`;
+      }
+    }
+  }
+
+  return `${header}${poolSections}${footer}`;
 }
 
 /**

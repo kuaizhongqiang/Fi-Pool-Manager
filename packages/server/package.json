@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-server",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "Fi-Pool-Manager 核心服务：数据获取、技术分析、LLM 分析引擎、向量检索",
   "type": "module",
   "main": "dist/index.js",
@@ -37,6 +37,8 @@
     "./tools/execute.js": "./dist/tools/execute.js",
     "./tools/auxiliary.js": "./dist/tools/auxiliary.js",
     "./services/daily-summary.js": "./dist/services/daily-summary.js",
+    "./services/daily-summary-v2.js": "./dist/services/daily-summary-v2.js",
+    "./api/index.js": "./dist/api/index.js",
     "./utils/data-freshness.js": "./dist/utils/data-freshness.js"
   },
   "scripts": {
@@ -52,11 +54,15 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.0",
-    "drizzle-orm": "^0.32.0"
+    "drizzle-orm": "^0.32.0",
+    "express": "^5.2.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "^4.1.9",
     "drizzle-kit": "^0.22.0",

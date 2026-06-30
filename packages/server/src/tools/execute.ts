@@ -10,7 +10,7 @@
 import * as pipelineService from '../services/pipeline.js';
 import * as dailyInfoService from '../services/daily-info.js';
 import * as poolService from '../services/pool.js';
-import { generateDailySummary, printDailySummary } from '../services/daily-summary.js';
+import { generateDailySummaryV2, printDailySummaryV2 } from '../services/daily-summary-v2.js';
 
 /**
  * 对单只股票运行本地分析（数据获取 + 技术指标计算 + 客观报告）。
@@ -91,11 +91,11 @@ export async function runPoolFullPipeline(poolId: number, force?: boolean) {
         console.warn(`[runPoolFullPipeline] ${s.code} 失败:`, (err as Error).message);
       }
     }
-    // 自动触发每日综述（仅当有股票成功完成时）
+    // 自动触发每日综述 v2（仅当有股票成功完成时）
     if (completed > 0) {
       try {
-        const summary = await generateDailySummary(undefined, true);
-        printDailySummary(summary);
+        const summary = await generateDailySummaryV2(undefined);
+        printDailySummaryV2(summary);
       } catch (err) {
         console.warn(`[runPoolFullPipeline] 生成每日综述失败:`, (err as Error).message);
       }

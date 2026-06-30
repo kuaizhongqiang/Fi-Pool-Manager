@@ -66,6 +66,8 @@ import * as cmd from 'fi-pool-server/tools/command.js';
 import * as exec from 'fi-pool-server/tools/execute.js';
 import * as aux from 'fi-pool-server/tools/auxiliary.js';
 import * as dailySummaryService from 'fi-pool-server/services/daily-summary.js';
+import * as dailySummaryV2Service from 'fi-pool-server/services/daily-summary-v2.js';
+import { startApiServer } from 'fi-pool-server/api/index.js';
 
 // ─── 输出格式化辅助 ───────────────────────────────────────────
 
@@ -565,12 +567,25 @@ program
 
 program
   .command('daily-summary')
-  .description('生成每日综合股池综述')
+  .description('生成每日综合股池综述（v1，兼容旧数据）')
   .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
   .action(async (date?: string) => {
     try {
       const result = await aux.generateDailySummaryReport(date);
       dailySummaryService.printDailySummary(result);
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('daily-summary-v2')
+  .description('生成每日综合股池综述（v2，异常值驱动 + 多维分析 + RAG）')
+  .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
+  .action(async (date?: string) => {
+    try {
+      const result = await dailySummaryV2Service.generateDailySummaryV2(date);
+      dailySummaryV2Service.printDailySummaryV2(result);
     } catch (err) {
       printError((err as Error).message);
     }
@@ -633,6 +648,18 @@ configCmd
       } else {
         printError(result.error?.message ?? '设置失败');
       }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('serve')
+  .description('启动 REST API 服务器（供 external tools 使用）')
+  .option('-p, --port <port>', '端口号', '3721')
+  .action((options: { port: string }) => {
+    try {
+      startApiServer(parseInt(options.port, 10));
     } catch (err) {
       printError((err as Error).message);
     }

@@ -190,6 +190,8 @@ export async function searchSimilar(params: {
   query: string;
   type?: string;
   code?: string;
+  date?: string;       // 精确日期过滤
+  dateBefore?: string; // 日期上限过滤（< 该日期）
   limit?: number;
   minScore?: number;
 }): Promise<SearchResult[]> {
@@ -214,6 +216,12 @@ export async function searchSimilar(params: {
   }
   if (params.code) {
     conditions.push(eq(vecEmbedding.contentCode, params.code));
+  }
+  if (params.date) {
+    conditions.push(eq(vecEmbedding.contentDate, params.date));
+  }
+  if (params.dateBefore) {
+    conditions.push(sql`${vecEmbedding.contentDate} < ${params.dateBefore}`);
   }
 
   // 3. 加载候选向量

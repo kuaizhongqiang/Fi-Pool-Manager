@@ -1,7 +1,7 @@
 /**
  * Drizzle ORM Schema — Fi-Pool-Manager
  *
- * 10 张表定义，与 docs/database-schema.md 完全对应。
+ * 12 张表定义，与 docs/database-schema.md 完全对应。
  * 使用 drizzle-orm/sqlite-core 定义 SQLite 表结构。
  *
  * 表清单：
@@ -12,7 +12,9 @@
  * - daily_analysis_report      客观分析报告
  * - sentiment_report           舆情报告
  * - analysis_roler             多角色发言记录
- * - final_report               最终报告
+ * - final_report               最终报告（含 anomaly_score）
+ * - daily_summary_detail       每日异常股票逐维度分析明细
+ * - daily_summary              每日综述最终报告
  * - config                     系统配置
  * - vec_embedding              向量数据
  *
@@ -137,11 +139,46 @@ export const finalReport = sqliteTable('final_report', {
   fullReport: text('full_report').notNull().default(''), // full 内容
   roleSummary: text('role_summary').notNull().default('[]'), // JSON: 各角色核心观点
   pipelineId: text('pipeline_id').notNull().default(''), // 流水线运行 ID
+  anomalyScore: real('anomaly_score').notNull().default(1.0), // 异常偏移值，1=正常，越大越异常
   createdAt: text('created_at').notNull().default("datetime('now')"),
 }, (table) => ({
   codeDateUnique: uniqueIndex('idx_fr_unique').on(table.code, table.date),
   codeIdx: index('idx_fr_code').on(table.code),
   dateIdx: index('idx_fr_date').on(table.date),
+}));
+
+// ─── DailySummaryDetail 每日异常股票逐维度分析 ──────────────
+
+export const dailySummaryDetail = sqliteTable('daily_summary_detail', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  stockCode: text('stock_code').notNull(), // 股票代码
+  date: text('date').notNull(), // 'yyyy-MM-dd'
+  dimension: text('dimension').notNull(), // 'price' | 'sentiment' | 'volume' | 'sector'
+  anomalyDesc: text('anomaly_desc').notNull().default(''), // 该维度异常描述
+  anomalyScore: real('anomaly_score').notNull().default(1.0), // 该维度异常分
+  keyFindings: text('key_findings').notNull().default(''), // 关键发现
+  pipelineId: text('pipeline_id').notNull().default(''),
+  createdAt: text('created_at').notNull().default("datetime('now')"),
+}, (table) => ({
+  dateIdx: index('idx_dsd_date').on(table.date),
+  stockDateIdx: index('idx_dsd_stock_date').on(table.stockCode, table.date),
+  dimensionIdx: index('idx_dsd_dimension').on(table.dimension),
+}));
+
+// ─── DailySummary 每日综述最终报告 ─────────────────────────
+
+export const dailySummary = sqliteTable('daily_summary', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  date: text('date').notNull().unique(), // 'yyyy-MM-dd'
+  anomalyCount: integer('anomaly_count').notNull().default(0), // 异常股票数量
+  totalStocks: integer('total_stocks').notNull().default(0), // 股池总股票数
+  fullReport: text('full_report').notNull().default(''), // 完整报告
+  overview: text('overview').notNull().default(''), // 概述（200 字内）
+  pipelineIds: text('pipeline_ids').notNull().default('[]'), // 关联的流水线 ID 列表 JSON
+  modelUsed: text('model_used').notNull().default(''), // 使用的 LLM 模型名
+  createdAt: text('created_at').notNull().default("datetime('now')"),
+}, (table) => ({
+  dateIdx: index('idx_ds_date').on(table.date),
 }));
 
 // ─── Config 系统配置 ──────────────────────────────────────
