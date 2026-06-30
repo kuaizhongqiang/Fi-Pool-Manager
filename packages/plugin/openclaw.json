@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "id": "fi-pool-manager",
   "name": "Fi-Pool-Manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "A股股池管理 — 管理自定义股票池、获取日行情数据、进行技术分析，并通过多角色 LLM 分析产出投资建议报告",
   "author": "kuaizhongqiang",
   "homepage": "https://github.com/kuaizhongqiang/Fi-Pool-Manager",
