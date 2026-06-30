@@ -67,6 +67,7 @@ import * as exec from 'fi-pool-server/tools/execute.js';
 import * as aux from 'fi-pool-server/tools/auxiliary.js';
 import * as dailySummaryService from 'fi-pool-server/services/daily-summary.js';
 import * as dailySummaryV2Service from 'fi-pool-server/services/daily-summary-v2.js';
+import { startApiServer } from 'fi-pool-server/api/index.js';
 
 // ─── 输出格式化辅助 ───────────────────────────────────────────
 
@@ -647,6 +648,18 @@ configCmd
       } else {
         printError(result.error?.message ?? '设置失败');
       }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('serve')
+  .description('启动 REST API 服务器（供 external tools 使用）')
+  .option('-p, --port <port>', '端口号', '3721')
+  .action((options: { port: string }) => {
+    try {
+      startApiServer(parseInt(options.port, 10));
     } catch (err) {
       printError((err as Error).message);
     }
