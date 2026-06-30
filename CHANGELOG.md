@@ -1,3 +1,11 @@
+# [0.3.1](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.0...v0.3.1) (2026-06-30)
+
+### Bug Fixes
+
+* **migration**: created_at DEFAULT 改为函数调用，anomaly_score 显式 REAL ([f7ec7ab]()), closes [#105](/issues/105)
+* **cli**: 版本号 0.2.4 → 0.3.0 ([f7ec7ab]()), closes [#106](/issues/106)
+* **schema**: vec_embedding.content_type 注释补充新增类型 ([f7ec7ab]()), closes [#107](/issues/107)
+
 # [0.3.0](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.2.4...v0.3.0) (2026-06-30)
 
 ### Features
