@@ -132,6 +132,11 @@ app.get('/api/v1/overview', async (req, res) => {
       .select({
         id: pool.id,
         name: pool.name,
+        desc: pool.desc,
+        poolAnalysis: pool.poolAnalysis,
+        poolSignal: pool.poolSignal,
+        createdAt: pool.createdAt,
+        updatedAt: pool.updatedAt,
         stockCount: sql<number>`(SELECT count(*) FROM ${poolStock} WHERE ${poolStock.poolId} = ${pool.id})`,
       })
       .from(pool)
@@ -154,6 +159,100 @@ app.get('/api/v1/overview', async (req, res) => {
         latestAnalysisDate: latestAnalysis?.date ?? null,
       },
     });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── GET /api/v1/pools — 股池列表（完整字段）───────────────
+
+app.get('/api/v1/pools', async (_req, res) => {
+  try {
+    const db = getDatabase();
+    const rows = db
+      .select({
+        id: pool.id,
+        name: pool.name,
+        desc: pool.desc,
+        poolAnalysis: pool.poolAnalysis,
+        poolSignal: pool.poolSignal,
+        createdAt: pool.createdAt,
+        updatedAt: pool.updatedAt,
+        stockCount: sql<number>`(SELECT count(*) FROM ${poolStock} WHERE ${poolStock.poolId} = ${pool.id})`,
+      })
+      .from(pool)
+      .orderBy(pool.id)
+      .all();
+    res.json({ data: rows });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── GET /api/v1/pools/:id/stocks — 池中股票列表 ──────────
+
+app.get('/api/v1/pools/:id/stocks', async (req, res) => {
+  try {
+    const poolId = parseInt(req.params.id, 10);
+    if (isNaN(poolId)) {
+      return res.status(400).json({ error: '无效的股池 ID' });
+    }
+    const db = getDatabase();
+    const rows = db
+      .select({
+        code: stock.code,
+        name: stock.name,
+        currentPrice: stock.currentPrice,
+        addedAt: poolStock.addedAt,
+      })
+      .from(poolStock)
+      .innerJoin(stock, eq(poolStock.stockCode, stock.code))
+      .where(eq(poolStock.poolId, poolId))
+      .orderBy(stock.code)
+      .all();
+    res.json({ data: rows });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ─── GET /api/v1/analysis/batch — 批量获取股票最新分析 ────
+
+app.get('/api/v1/analysis/batch', async (req, res) => {
+  try {
+    const codesParam = (req.query.codes as string || '').trim();
+    if (!codesParam) {
+      return res.status(400).json({ error: '缺少 codes 参数（逗号分隔）' });
+    }
+    const codes = codesParam.split(',').map(c => c.trim()).filter(Boolean);
+    if (codes.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const db = getDatabase();
+    const results: { code: string; summary: string | null; signals: string | null; date: string | null }[] = [];
+
+    for (const code of codes) {
+      const report = db
+        .select({
+          summary: dailyAnalysisReport.summary,
+          signals: dailyAnalysisReport.signals,
+          date: dailyAnalysisReport.date,
+        })
+        .from(dailyAnalysisReport)
+        .where(eq(dailyAnalysisReport.code, code))
+        .orderBy(desc(dailyAnalysisReport.date))
+        .limit(1)
+        .get();
+
+      if (report) {
+        results.push({ code, summary: report.summary, signals: report.signals, date: report.date });
+      } else {
+        results.push({ code, summary: null, signals: null, date: null });
+      }
+    }
+
+    res.json({ data: results });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -207,6 +306,9 @@ export function startApiServer(port?: number): void {
     console.log(`  GET  /api/v1/stocks/search?q=关键词`);
     console.log(`  GET  /api/v1/stocks/:code/quote`);
     console.log(`  GET  /api/v1/overview`);
+    console.log(`  GET  /api/v1/pools`);
+    console.log(`  GET  /api/v1/pools/:id/stocks`);
+    console.log(`  GET  /api/v1/analysis/batch?codes=`);
     console.log(`  POST /api/v1/analysis/run`);
   });
 }
