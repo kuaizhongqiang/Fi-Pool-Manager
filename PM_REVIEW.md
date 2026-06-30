@@ -202,3 +202,72 @@ P4: 错误处理加固 (M5 + L2) + OpenClaw manifest (L3)
 ### 第四轮评分：A
 
 第三轮全部严重问题（C1/C2）已修复，中等问题仅有 M3（部分）和 M4（设计决策）遗留。代码质量显著提升，测试覆盖从 1 个文件扩展到更全面的 8 个函数覆盖。`openclaw.json` 补齐后项目具备完整的发布形态。
+
+---
+
+## 第五轮：v0.2.0 功能增量审计
+
+> 审核日期：2026-06-30
+> 审核范围：`312b579` → `ca82fd2`（v0.2.0 发布）
+> 变更规模：18 文件 / +508 -22 行
+> 核心新增：每日综合股池综述（`daily-summary.ts` 253 行）
+
+### 总体评价
+
+v0.2.0 新增「每日综合股池综述」是一个**高价值增量功能**—流水线完成后自动汇总所有股池信号、调用 LLM 生成每日投资回顾。功能设计闭环完整（service → tool → CLI → plugin），自动触发 + 手动调用的双模式设计合理。文档同步更新到位。**增量评分：A-**
+
+### 🔴 未发现严重问题
+
+无崩溃路径、无数据丢失风险、无安全漏洞。
+
+### 🟡 中等问题
+
+| # | 问题 | 文件 | 说明 |
+|---|------|------|------|
+| M1 | **`collectPoolData` N+1 查询** | `daily-summary.ts:70-121` | 嵌套循环对每只股票分别查询 `stock`、`daily_analysis_report`、`final_report`。49 只股票 = ~147 次 DB 查询。应改为 `IN` 批量查询。流水线后自动触发尚可接受，但高频手动调用时性能堪忧。 |
+| M2 | **信号提取仅覆盖金叉/死叉** | `daily-summary.ts:106-111` | `JSON.parse(analysis.signals)` 后只检查 `goldenCross`/`deadCross`。pipeline 的 `outputAnalysisReport` 实际存储的是 `buySignals`/`sellSignals` 数组，这些信号会被完全忽略。导致几乎所有股票 signal=0（中性）。 |
+| M3 | **`normalizeFullReport` 对 null 返回字面量 `"null"`** | `pipeline.ts:260-270` | `String(null)` → `"null"` 字符串。若 LLM 返回 `fullReport: null`，数据库将存储字符串 `"null"` 而非空值。应显式处理 null/undefined。 |
+
+### 🟢 轻微问题
+
+| # | 问题 | 文件 | 说明 |
+|---|------|------|------|
+| L1 | **service 层直接 console.log** | `daily-summary.ts:234-244` | `generateDailySummary` 内部打印格式化输出。MCP 插件调用时不期望产生控制台输出。应由调用方决定格式化。 |
+| L2 | **数据陈旧检查重复** | `daily-info.ts:379-386` + `pipeline.ts:505-513` | 同一段 10 天陈旧数据警告逻辑出现在两个文件。应提取为 `services/data-freshness.ts` 共享函数。 |
+| L3 | **`normalizeFullReport` 命名不精确** | `pipeline.ts:260` | 函数实际做的是"递归提取 LLM 响应中的文本"，非"规范化 fullReport"。建议改为 `extractFullReportText` 或 `resolveFullReportValue`。 |
+| L4 | **未使用导入** | `daily-summary.ts:12` | `sentimentReport` 被 import 但从未引用。产生 Tree-shaking 噪音。 |
+| L5 | **`JSON.parse` 类型不安全** | `daily-summary.ts:107` | `parsed.goldenCross` / `parsed.deadCross` 无类型守卫。若 signals JSON 结构不同，TypeScript 无法检测。 |
+| L6 | **`generateDailySummary` 返回前无空值保护** | `daily-summary.ts:227` | `sessionService.appendMessage` 传入 assistant 角色，但 `chatCompletion` 失败时 session 中只有 system 消息。不影响正确性，但 session 状态不完整。 |
+
+### 设计亮点（值得保留）
+
+1. **自动触发 Hook 的静默失败策略** — `execute.ts:95-100` 中综述生成失败不阻塞流水线，符合项目一贯的优雅降级原则
+2. **`normalizeFullReport` 递归设计** — 正确处理 LLM 返回嵌套 JSON 的边缘情况，解决了双重序列化问题
+3. **CLI `.env` 自动发现** — 三级 fallback（CWD → ~/.fi-pool/ → /etc/fi-pool/）+ `--config` 显式指定，覆盖全局安装场景
+4. **无数据保护** — `daily-summary.ts:203-212` 在股池为空时返回提示文本而非崩溃
+5. **Prompt 设计结构化** — `buildDailySummaryPrompt` 产出清晰的 Markdown 格式，LLM 友好度高
+6. **文档同步** — api-design.md、pipeline-implementation.md、README.md、index.md 均同步更新
+
+### 历史遗留跟踪
+
+| # | 问题 | 状态 |
+|---|------|------|
+| M3 (第四轮) | Pipeline 函数过长 | ⚠️ 仍部分遗留，`runFullPipeline` 仍 ~300 行 |
+| M4 (第四轮) | Config/.env 同步机制 | ❌ 未修复，设计决策待定 |
+| L4 (第四轮) | getSystemStatus sql 泛型 | ⚠️ 低优先级 |
+| L5 (第四轮) | embedding.ts any 类型 | ⚠️ 低优先级 |
+
+### 当前修复优先级
+
+```
+P0: M2 — 信号提取逻辑与 pipeline 存储结构对齐（阻碍综述准确性）
+P1: M1 — collectPoolData 批量查询优化
+P2: L1 — 控制台输出从 service 层剥离
+P2: L2 — 数据陈旧检查去重
+P3: M3 — normalizeFullReport null 处理
+P3: L4 — 清理未使用 import
+```
+
+### 第五轮增量评分：A-
+
+无严重问题。唯一实质性缺陷 M2（信号匹配逻辑）会导致综述信号统计失真，需优先修复。整体是高质量的功能增量，API 设计、错误处理、文档同步均保持项目已有水准。

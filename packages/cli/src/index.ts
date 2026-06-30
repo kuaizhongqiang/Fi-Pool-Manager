@@ -65,6 +65,7 @@ import * as query from 'fi-pool-server/tools/query.js';
 import * as cmd from 'fi-pool-server/tools/command.js';
 import * as exec from 'fi-pool-server/tools/execute.js';
 import * as aux from 'fi-pool-server/tools/auxiliary.js';
+import * as dailySummaryService from 'fi-pool-server/services/daily-summary.js';
 
 // ─── 输出格式化辅助 ───────────────────────────────────────────
 
@@ -569,7 +570,7 @@ program
   .action(async (date?: string) => {
     try {
       const result = await aux.generateDailySummaryReport(date);
-      printJson(result);
+      dailySummaryService.printDailySummary(result);
     } catch (err) {
       printError((err as Error).message);
     }

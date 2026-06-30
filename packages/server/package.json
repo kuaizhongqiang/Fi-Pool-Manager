@@ -35,7 +35,9 @@
     "./tools/query.js": "./dist/tools/query.js",
     "./tools/command.js": "./dist/tools/command.js",
     "./tools/execute.js": "./dist/tools/execute.js",
-    "./tools/auxiliary.js": "./dist/tools/auxiliary.js"
+    "./tools/auxiliary.js": "./dist/tools/auxiliary.js",
+    "./services/daily-summary.js": "./dist/services/daily-summary.js",
+    "./utils/data-freshness.js": "./dist/utils/data-freshness.js"
   },
   "scripts": {
     "build": "tsc",

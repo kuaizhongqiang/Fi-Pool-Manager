@@ -9,10 +9,40 @@
  */
 
 import { getDatabase } from '../db/index.js';
-import { pool, poolStock, stock, dailyAnalysisReport, sentimentReport, finalReport } from '../db/schema.js';
+import { pool, poolStock, stock, dailyAnalysisReport, finalReport } from '../db/schema.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import * as llmService from './llm.js';
 import * as sessionService from './session.js';
+
+// ─── 类型 ────────────────────────────────────────────────────────
+
+/** daily_analysis_report.signals 字段的 JSON 结构 */
+interface AnalysisSignals {
+  goldenCross?: boolean;
+  deadCross?: boolean;
+  overbought?: boolean;
+  oversold?: boolean;
+  volumeSpike?: boolean;
+  volumeRatio?: number;
+}
+
+/**
+ * 综合多维度信号计算看多/看空/中性评级。
+ * 优先级：金叉 > 死叉 > 超卖 > 超买。
+ */
+function computeSignal(signalsStr: string | null | undefined): number {
+  if (!signalsStr) return 0;
+  try {
+    const s: AnalysisSignals = JSON.parse(signalsStr);
+    if (s.goldenCross) return 1;
+    if (s.deadCross) return -1;
+    if (s.oversold) return 1;    // RSI < 20，超卖有反弹预期
+    if (s.overbought) return -1; // RSI > 80，超买有回调风险
+    return 0;
+  } catch {
+    return 0;
+  }
+}
 
 // ─── 类型 ────────────────────────────────────────────────────────
 
@@ -51,68 +81,101 @@ export interface DailySummary {
 
 /**
  * 收集所有股池的最新分析数据，供 LLM 生成综述使用。
+ *
+ * 使用批量查询（IN）代替逐股 N+1 查询，避免性能问题。
  */
 async function collectPoolData(date: string): Promise<PoolSummaryData[]> {
   const db = getDatabase();
   const pools = db.select().from(pool).all();
+  if (pools.length === 0) return [];
+
+  // 1. 一次性获取所有股池的股票代码
+  const poolStockRows = db
+    .select({
+      poolId: poolStock.poolId,
+      code: poolStock.stockCode,
+    })
+    .from(poolStock)
+    .all();
+
+  // 按 poolId 分组
+  const codesByPool = new Map<number, string[]>();
+  for (const row of poolStockRows) {
+    const list = codesByPool.get(row.poolId) ?? [];
+    list.push(row.code);
+    codesByPool.set(row.poolId, list);
+  }
+
+  const allCodes = [...new Set(poolStockRows.map((r) => r.code))];
+  if (allCodes.length === 0) return [];
+
+  // 2. 批量查询所有股票信息
+  const stockRows = db
+    .select()
+    .from(stock)
+    .all();
+  const stockMap = new Map(stockRows.map((s) => [s.code, s]));
+
+  // 3. 批量查询所有股的最新分析报告
+  //
+  //    每个 code 只取最新的一条（date <= targetDate, ORDER BY date DESC LIMIT 1）
+  //    用子查询实现：WHERE rowid IN (SELECT rowid FROM ... GROUP BY code)
+  const analysisRows = db
+    .select({
+      code: dailyAnalysisReport.code,
+      date: dailyAnalysisReport.date,
+      summary: dailyAnalysisReport.summary,
+      signals: dailyAnalysisReport.signals,
+    })
+    .from(dailyAnalysisReport)
+    .where(sql`${dailyAnalysisReport.date} <= ${date}`)
+    .all();
+
+  // 按 code 分组取最新
+  const latestAnalysis = new Map<string, typeof analysisRows[0]>();
+  for (const row of analysisRows) {
+    const existing = latestAnalysis.get(row.code);
+    if (!existing || row.date > existing.date) {
+      latestAnalysis.set(row.code, row);
+    }
+  }
+
+  // 4. 批量查询所有股的最终报告（只取最新 summary）
+  const finalRows = db
+    .select({
+      code: finalReport.code,
+      date: finalReport.date,
+      summary: finalReport.summary,
+    })
+    .from(finalReport)
+    .where(sql`${finalReport.date} <= ${date}`)
+    .all();
+
+  const latestFinal = new Map<string, typeof finalRows[0]>();
+  for (const row of finalRows) {
+    const existing = latestFinal.get(row.code);
+    if (!existing || row.date > existing.date) {
+      latestFinal.set(row.code, row);
+    }
+  }
+
+  // 5. 组装结果
   const results: PoolSummaryData[] = [];
 
   for (const p of pools) {
-    const stockCodes = db
-      .select({ code: poolStock.stockCode })
-      .from(poolStock)
-      .where(eq(poolStock.poolId, p.id))
-      .all()
-      .map((r) => r.code);
-
+    const stockCodes = codesByPool.get(p.id) ?? [];
     const stockSignals: StockSignal[] = [];
 
     for (const code of stockCodes) {
-      const stk = db.select().from(stock).where(eq(stock.code, code)).get();
+      const stk = stockMap.get(code);
       if (!stk) continue;
 
-      // 取当日或最近的分析报告
-      const analysis = db
-        .select({
-          summary: dailyAnalysisReport.summary,
-          signals: dailyAnalysisReport.signals,
-        })
-        .from(dailyAnalysisReport)
-        .where(
-          and(
-            eq(dailyAnalysisReport.code, code),
-            sql`${dailyAnalysisReport.date} <= ${date}`,
-          ),
-        )
-        .orderBy(desc(dailyAnalysisReport.date))
-        .limit(1)
-        .get();
-
-      // 取当日或最近的最终报告 summary
-      const final = db
-        .select({ summary: finalReport.summary })
-        .from(finalReport)
-        .where(
-          and(
-            eq(finalReport.code, code),
-            sql`${finalReport.date} <= ${date}`,
-          ),
-        )
-        .orderBy(desc(finalReport.date))
-        .limit(1)
-        .get();
-
-      let signal = 0;
-      if (analysis?.signals) {
-        try {
-          const parsed = JSON.parse(analysis.signals);
-          if (parsed.goldenCross) signal = 1;
-          else if (parsed.deadCross) signal = -1;
-        } catch { /* ignore */ }
-      }
+      const analysis = latestAnalysis.get(code);
+      const final = latestFinal.get(code);
+      const signal = computeSignal(analysis?.signals ?? null);
 
       stockSignals.push({
-        code: stk.code,
+        code,
         name: stk.name,
         currentPrice: stk.currentPrice,
         signal,
@@ -121,17 +184,13 @@ async function collectPoolData(date: string): Promise<PoolSummaryData[]> {
       });
     }
 
-    const bullish = stockSignals.filter((s) => s.signal === 1).length;
-    const bearish = stockSignals.filter((s) => s.signal === -1).length;
-    const neutral = stockSignals.length - bullish - bearish;
-
     results.push({
       poolId: p.id,
       poolName: p.name,
       stocks: stockSignals,
-      bullish,
-      bearish,
-      neutral,
+      bullish: stockSignals.filter((s) => s.signal === 1).length,
+      bearish: stockSignals.filter((s) => s.signal === -1).length,
+      neutral: stockSignals.length - stockSignals.filter((s) => s.signal === 1).length - stockSignals.filter((s) => s.signal === -1).length,
     });
   }
 
@@ -175,6 +234,27 @@ function buildDailySummaryPrompt(pools: PoolSummaryData[], date: string): string
 ${poolSections}
 
 请直接输出综述内容，不要输出 JSON。`;
+}
+
+/**
+ * 格式化并打印每日综述到控制台。
+ * 由 CLI 和流水线 Hook 调用，不嵌入在 generateDailySummary 内部。
+ */
+export function printDailySummary(summary: DailySummary): void {
+  const sep = '='.repeat(60);
+  const bullish = summary.overall.totalBullish;
+  const bearish = summary.overall.totalBearish;
+  const neutral = summary.overall.totalNeutral;
+  console.log(`\n${sep}`);
+  console.log(`  📋 每日综合股池综述 — ${summary.date}`);
+  console.log(sep);
+  console.log(`  总览: ${summary.overall.totalStocks} 只股票 | 📈${bullish} | 📉${bearish} | ➖${neutral}`);
+  for (const p of summary.pools) {
+    console.log(`  [${p.poolName}] ${p.stocks.length} 只 | 📈${p.bullish} 📉${p.bearish} ➖${p.neutral}`);
+  }
+  console.log(sep);
+  console.log(summary.llmSummary);
+  console.log(`${sep}\n`);
 }
 
 // ─── 生成综述 ─────────────────────────────────────────────────────
@@ -228,20 +308,9 @@ export async function generateDailySummary(
   } catch (err) {
     llmSummary = `LLM 调用失败: ${err instanceof Error ? err.message : String(err)}`;
     console.error('[daily-summary] LLM 调用失败:', llmSummary);
+    // 保持 session 状态完整
+    sessionService.appendMessage(sid, 'assistant', llmSummary);
   }
-
-  // 4. 输出到控制台
-  const separator = '='.repeat(60);
-  console.log(`\n${separator}`);
-  console.log(`  📋 每日综合股池综述 — ${targetDate}`);
-  console.log(separator);
-  console.log(`  总览: ${totalStocks} 只股票 | 📈${totalBullish} | 📉${totalBearish} | ➖${totalNeutral}`);
-  for (const p of pools) {
-    console.log(`  [${p.poolName}] ${p.stocks.length} 只 | 📈${p.bullish} 📉${p.bearish} ➖${p.neutral}`);
-  }
-  console.log(separator);
-  console.log(llmSummary);
-  console.log(`${separator}\n`);
 
   return {
     date: targetDate,
