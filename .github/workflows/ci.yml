@@ -28,6 +28,11 @@ jobs:
       - name: Build all packages (server first)
         run: |
           npm run build --workspace=packages/server
+          for pkg in packages/cli packages/plugin; do
+            rm -rf "$pkg/node_modules/fi-pool-server/dist"
+            cp -r packages/server/dist "$pkg/node_modules/fi-pool-server/dist"
+            cp packages/server/package.json "$pkg/node_modules/fi-pool-server/package.json"
+          done
           npm run build --workspace=packages/cli --workspace=packages/plugin
 
       - name: Type check (needs build artifacts from previous step)
