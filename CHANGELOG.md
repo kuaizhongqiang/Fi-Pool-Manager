@@ -1,3 +1,12 @@
+# [0.3.2](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.1...v0.3.2) (2026-06-30)
+
+### Bug Fixes
+
+* **db**: daily_summary_detail 添加 (stock_code, date, dimension) 唯一索引 (#109)
+* **daily-summary-v2**: selectAnomalyStocks 的 anomalyScore null 防御 (#110)
+* **daily-summary-v2**: selectPromptEntries availableTokens 下限保护 (#111)
+* **daily-summary-v2**: analyzeAnomalyStock LLM 失败时跳过写入和向量化 (#112)
+
 # [0.3.1](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.0...v0.3.1) (2026-06-30)
 
 ### Bug Fixes
