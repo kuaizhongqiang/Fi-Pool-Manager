@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `idx_dsd_unique` ON `daily_summary_detail` (`stock_code`,`date`,`dimension`);
