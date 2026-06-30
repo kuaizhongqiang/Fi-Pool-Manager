@@ -9,16 +9,25 @@
 
 import { fetchJson, fetchWithRetry } from '../utils/http-client.js';
 
-// ─── 配置 ────────────────────────────────────────────────────────
+// ─── 配置（惰性读取，避免 dotenv 加载前初始化）─────────────────────
 
-/** LM Studio 服务地址，默认 http://127.0.0.1:1234 */
-const BASE_URL = process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+/**
+ * LM Studio 服务地址。
+ * 使用惰性 getter 而非模块级常量，确保 dotenv 加载后的值生效。
+ */
+function getBaseUrl(): string {
+  return process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+}
 
 /** 默认使用的模型名称 */
-const DEFAULT_MODEL = process.env.LLM_MODEL || 'qwen/qwen3.5-9b';
+function getDefaultModel(): string {
+  return process.env.LLM_MODEL || 'qwen/qwen3.5-9b';
+}
 
 /** LLM 上下文窗口限制（token），默认 262144 */
-const CONTEXT_LIMIT = parseInt(process.env.LLM_CONTEXT_LIMIT || '262144', 10);
+function resolveContextLimit(): number {
+  return parseInt(process.env.LLM_CONTEXT_LIMIT || '262144', 10);
+}
 
 // ─── 类型 ────────────────────────────────────────────────────────
 
@@ -87,10 +96,10 @@ export async function chatCompletion(
     sessionId?: string;
   },
 ): Promise<string> {
-  const url = `${BASE_URL}/v1/chat/completions`;
+  const url = `${getBaseUrl()}/v1/chat/completions`;
 
   const body: ChatCompletionRequest = {
-    model: params.model || DEFAULT_MODEL,
+    model: params.model || getDefaultModel(),
     messages: params.messages,
     max_tokens: params.maxTokens,
     temperature: params.temperature ?? 0.7,
@@ -121,14 +130,14 @@ export async function chatCompletion(
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const baseUrl = process.env.LLM_BASE_URL || 'http://127.0.0.1:1234';
+    const baseUrl = getBaseUrl();
     // 友好化常见错误
     if (msg.includes('fetch failed') || msg.includes('connect') || msg.includes('ECONNREFUSED')) {
       throw new Error(
         `LLM 连接失败（${baseUrl}），请确认：\n` +
         `  1. LM Studio 是否已启动\n` +
         `  2. LLM_BASE_URL 配置是否正确（当前: ${baseUrl}）\n` +
-        `  3. 模型是否已加载（${DEFAULT_MODEL}）\n` +
+        `  3. 模型是否已加载（${getDefaultModel()}）\n` +
         `  测试连接: curl ${baseUrl}/v1/models`,
       );
     }
@@ -136,7 +145,7 @@ export async function chatCompletion(
       throw new Error(
         `LLM 请求超时（${LLM_TIMEOUT / 1000}s），请确认：\n` +
         `  1. 模型推理速度是否正常\n` +
-        `  2. 可尝试减小 LLM_CONTEXT_LIMIT（当前: ${CONTEXT_LIMIT}）`,
+        `  2. 可尝试减小 LLM_CONTEXT_LIMIT（当前: ${resolveContextLimit()}）`,
       );
     }
     throw new Error(`LLM 调用失败: ${msg}`);
@@ -164,7 +173,7 @@ export async function chatCompletion(
  * // ['qwen/qwen3.5-9b', '...']
  */
 export async function listModels(): Promise<string[]> {
-  const url = `${BASE_URL}/v1/models`;
+  const url = `${getBaseUrl()}/v1/models`;
 
   const data = await fetchJson<ModelListResponse>(url);
 
@@ -197,5 +206,5 @@ export async function checkConnection(): Promise<boolean> {
  * @returns 环境变量 LLM_CONTEXT_LIMIT 的值（默认 262144）
  */
 export function getContextLimit(): number {
-  return CONTEXT_LIMIT;
+  return resolveContextLimit();
 }

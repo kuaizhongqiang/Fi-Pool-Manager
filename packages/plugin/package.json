@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-plugin",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Fi-Pool-Manager OpenClaw 插件",
   "type": "module",

@@ -137,7 +137,7 @@ const program = new Command();
 program
   .name('fi-pool')
   .description('A股股池管理服务端')
-  .version('0.2.3')
+  .version('0.2.4')
   .option('--config <path>', '指定 .env 配置文件路径（默认自动向上递归查找）');
 
 // ─── Pool Management ────────────────────────────────────────────
