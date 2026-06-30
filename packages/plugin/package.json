@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-plugin",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Fi-Pool-Manager OpenClaw 插件",
   "type": "module",
@@ -12,7 +12,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "fi-pool-server": "^0.3.1"
+    "fi-pool-server": "^0.3.2"
   },
   "devDependencies": {}
 }

@@ -94,8 +94,8 @@ function selectAnomalyStocks(date: string): AnomalyStock[] {
     .orderBy(desc(finalReport.anomalyScore))
     .all();
 
-  // 按 anomaly_score >= 阈值筛选
-  let candidates = rows.filter((r) => r.anomalyScore >= ANOMALY_THRESHOLD);
+  // 按 anomaly_score >= 阈值筛选（null → 1.0，避免旧数据异常）
+  let candidates = rows.filter((r) => (r.anomalyScore ?? 1.0) >= ANOMALY_THRESHOLD);
 
   // 超过上限则截断
   if (candidates.length > MAX_ANOMALY_STOCKS) {
@@ -110,7 +110,7 @@ function selectAnomalyStocks(date: string): AnomalyStock[] {
   return candidates.map((r) => ({
     code: r.code,
     name: r.name,
-    anomalyScore: r.anomalyScore,
+    anomalyScore: r.anomalyScore ?? 1.0,
     summary: r.summary,
     fullReport: r.fullReport,
   }));
@@ -215,12 +215,7 @@ async function analyzeAnomalyStock(
     });
   } catch (err) {
     console.warn(`[daily-summary-v2] LLM 多维分析失败 (${stock.code}):`, (err as Error).message);
-    llmResponse = JSON.stringify({
-      stock_code: stock.code,
-      dimensions: [
-        { dimension: 'price', anomaly_desc: 'LLM 调用失败', anomaly_score: 1.0, key_findings: '' },
-      ],
-    });
+    return []; // 失败时不写入兜底数据，直接跳过该股票的维度分析
   }
 
   // 2. 解析结果
@@ -284,8 +279,8 @@ function selectPromptEntries(
 
   if (allDetails.length === 0) return [];
 
-  // 计算可用预算
-  const availableTokens = contextLimit - SYS_PROMPT_TOKENS - OUTPUT_RESERVE_TOKENS;
+  // 计算可用预算（下限保护：极端小上下文配置下至少 3 条）
+  const availableTokens = Math.max(0, contextLimit - SYS_PROMPT_TOKENS - OUTPUT_RESERVE_TOKENS);
   const maxEntries = Math.max(3, Math.floor(availableTokens / TOKENS_PER_ENTRY));
 
   // 按 anomaly_score 降序，每只股票最多 2 个维度

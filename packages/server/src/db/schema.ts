@@ -163,6 +163,7 @@ export const dailySummaryDetail = sqliteTable('daily_summary_detail', {
   dateIdx: index('idx_dsd_date').on(table.date),
   stockDateIdx: index('idx_dsd_stock_date').on(table.stockCode, table.date),
   dimensionIdx: index('idx_dsd_dimension').on(table.dimension),
+  stockDateDimUnique: uniqueIndex('idx_dsd_unique').on(table.stockCode, table.date, table.dimension),
 }));
 
 // ─── DailySummary 每日综述最终报告 ─────────────────────────
