@@ -186,7 +186,9 @@ export async function fetchRealTimeQuote(code: string): Promise<RealTimeQuote> {
     throw new Error(`腾讯实时行情接口返回错误状态 ${response.status} (${code})`);
   }
 
-  const rawText = await response.text();
+  // 腾讯接口返回 GBK 编码，必须显式解码，否则中文名称乱码
+  const buf = await response.arrayBuffer();
+  const rawText = new TextDecoder('gbk').decode(buf);
 
   // 格式: v_sh600519="1~贵州茅台~600519~...";
   // 提取引号内的内容
