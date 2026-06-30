@@ -20,6 +20,8 @@ import {
 } from '../db/schema.js';
 import { eq, and, like, desc, sql } from 'drizzle-orm';
 import * as executeTools from '../tools/execute.js';
+import * as dailyInfoService from '../services/daily-info.js';
+import * as stockService from '../services/stock.js';
 import { VERSION } from '../index.js';
 
 const app = express();
@@ -294,6 +296,38 @@ app.post('/api/v1/analysis/run', async (req, res) => {
   }
 });
 
+// ─── POST /api/v1/stocks/repair-names — 修复已损坏的股票名称 ──
+
+app.post('/api/v1/stocks/repair-names', async (_req, res) => {
+  try {
+    const allStocks = await stockService.listAllStocks();
+    let repaired = 0;
+    const errors: { code: string; error: string }[] = [];
+
+    for (const s of allStocks) {
+      try {
+        const { name } = await dailyInfoService.fetchRealTimeQuote(s.code);
+        if (name && name !== s.name) {
+          await stockService.upsertStock(s.code, name, s.currentPrice);
+          repaired++;
+        }
+      } catch (err) {
+        errors.push({ code: s.code, error: (err as Error).message });
+      }
+    }
+
+    res.json({
+      data: {
+        total: allStocks.length,
+        repaired,
+        errors: errors.length > 0 ? errors : undefined,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ─── 启动服务器 ──────────────────────────────────────────────
 
 const PORT = parseInt(process.env.API_PORT || '3721', 10);
@@ -310,6 +344,7 @@ export function startApiServer(port?: number): void {
     console.log(`  GET  /api/v1/pools/:id/stocks`);
     console.log(`  GET  /api/v1/analysis/batch?codes=`);
     console.log(`  POST /api/v1/analysis/run`);
+    console.log(`  POST /api/v1/stocks/repair-names`);
   });
 }
 

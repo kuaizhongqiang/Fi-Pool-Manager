@@ -1,3 +1,10 @@
+# [0.3.5](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.4...v0.3.5) (2026-06-30)
+
+### Bug Fixes
+
+* **daily-info**: fetchRealTimeQuote() 改为 GBK 解码避免股票名称乱码 (#118)
+* **api**: POST /api/v1/stocks/repair-names 修复端点恢复已损坏的股票名称 (#118)
+
 # [0.3.4](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.3...v0.3.4) (2026-06-30)
 
 ### Features
