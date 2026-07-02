@@ -139,9 +139,11 @@ app.get('/api/v1/overview', async (req, res) => {
         poolSignal: pool.poolSignal,
         createdAt: pool.createdAt,
         updatedAt: pool.updatedAt,
-        stockCount: sql<number>`(SELECT count(*) FROM ${poolStock} WHERE ${poolStock.poolId} = ${pool.id})`,
+        stockCount: sql<number>`cast(count(${poolStock.id}) as integer)`,
       })
       .from(pool)
+      .leftJoin(poolStock, eq(poolStock.poolId, pool.id))
+      .groupBy(pool.id)
       .all();
 
     // 最近分析日期
@@ -180,9 +182,11 @@ app.get('/api/v1/pools', async (_req, res) => {
         poolSignal: pool.poolSignal,
         createdAt: pool.createdAt,
         updatedAt: pool.updatedAt,
-        stockCount: sql<number>`(SELECT count(*) FROM ${poolStock} WHERE ${poolStock.poolId} = ${pool.id})`,
+        stockCount: sql<number>`cast(count(${poolStock.id}) as integer)`,
       })
       .from(pool)
+      .leftJoin(poolStock, eq(poolStock.poolId, pool.id))
+      .groupBy(pool.id)
       .orderBy(pool.id)
       .all();
     res.json({ data: rows });
