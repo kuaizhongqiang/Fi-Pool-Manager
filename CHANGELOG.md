@@ -1,3 +1,9 @@
+# [0.3.7](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.6...v0.3.7) (2026-07-02)
+
+### Bug Fixes
+
+* **api**: /api/v1/pools 和 /api/v1/overview stockCount 始终返回 1 — 子查询改为 LEFT JOIN + GROUP BY (#126)
+
 # [0.3.6](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.5...v0.3.6) (2026-07-02)
 
 ### Features
