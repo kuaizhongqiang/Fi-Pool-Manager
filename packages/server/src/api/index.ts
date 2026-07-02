@@ -120,33 +120,42 @@ app.get('/api/v1/stocks/:code/quote', async (req, res) => {
   }
 });
 
-// ─── GET /api/v1/overview — 聚合概览 ────────────────────────
-// #89
+// ─── GET /api/v1/overview — 聚合概览（股池 + 股票列表）────────
+// #89, #128 — 一次调用返回所有股池和其股票列表，消除 pools/:id/stocks 冗余
 
-app.get('/api/v1/overview', async (req, res) => {
+app.get('/api/v1/overview', async (_req, res) => {
   try {
     const db = getDatabase();
 
     const totalStocks = db.select({ count: sql<number>`count(*)` }).from(stock).get()?.count ?? 0;
-    const totalPools = db.select({ count: sql<number>`count(*)` }).from(pool).get()?.count ?? 0;
 
-    const pools = db
-      .select({
-        id: pool.id,
-        name: pool.name,
-        desc: pool.desc,
-        poolAnalysis: pool.poolAnalysis,
-        poolSignal: pool.poolSignal,
-        createdAt: pool.createdAt,
-        updatedAt: pool.updatedAt,
-        stockCount: sql<number>`cast(count(${poolStock.id}) as integer)`,
-      })
-      .from(pool)
-      .leftJoin(poolStock, eq(poolStock.poolId, pool.id))
-      .groupBy(pool.id)
-      .all();
+    // 1. 获取所有股池（直查，不 JOIN，不漏空池）
+    const allPools = db.select().from(pool).orderBy(pool.id).all();
 
-    // 最近分析日期
+    // 2. 逐池获取股票列表
+    const poolsWithStocks = allPools.map(p => {
+      const stocks = db
+        .select({ code: stock.code, name: stock.name })
+        .from(poolStock)
+        .innerJoin(stock, eq(poolStock.stockCode, stock.code))
+        .where(eq(poolStock.poolId, p.id))
+        .orderBy(stock.code)
+        .all();
+
+      return {
+        id: p.id,
+        name: p.name,
+        desc: p.desc,
+        poolSignal: p.poolSignal,
+        poolAnalysis: p.poolAnalysis,
+        stockCount: stocks.length,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        stocks,
+      };
+    });
+
+    // 3. 最近分析日期
     const latestAnalysis = db
       .select({ date: dailyAnalysisReport.date })
       .from(dailyAnalysisReport)
@@ -158,9 +167,9 @@ app.get('/api/v1/overview', async (req, res) => {
       data: {
         version: VERSION,
         totalStocks,
-        totalPools,
-        pools,
+        totalPools: poolsWithStocks.length,
         latestAnalysisDate: latestAnalysis?.date ?? null,
+        pools: poolsWithStocks,
       },
     });
   } catch (err) {
@@ -168,34 +177,7 @@ app.get('/api/v1/overview', async (req, res) => {
   }
 });
 
-// ─── GET /api/v1/pools — 股池列表（完整字段）───────────────
-
-app.get('/api/v1/pools', async (_req, res) => {
-  try {
-    const db = getDatabase();
-    const rows = db
-      .select({
-        id: pool.id,
-        name: pool.name,
-        desc: pool.desc,
-        poolAnalysis: pool.poolAnalysis,
-        poolSignal: pool.poolSignal,
-        createdAt: pool.createdAt,
-        updatedAt: pool.updatedAt,
-        stockCount: sql<number>`cast(count(${poolStock.id}) as integer)`,
-      })
-      .from(pool)
-      .leftJoin(poolStock, eq(poolStock.poolId, pool.id))
-      .groupBy(pool.id)
-      .orderBy(pool.id)
-      .all();
-    res.json({ data: rows });
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
-  }
-});
-
-// ─── GET /api/v1/pools/:id/stocks — 池中股票列表 ──────────
+// ─── GET /api/v1/pools/:id/stocks — 池中股票列表（由 overview 取代，保留供兼容）─
 
 app.get('/api/v1/pools/:id/stocks', async (req, res) => {
   try {
@@ -344,8 +326,7 @@ export function startApiServer(port?: number): void {
     console.log(`  GET  /api/v1/stocks/search?q=关键词`);
     console.log(`  GET  /api/v1/stocks/:code/quote`);
     console.log(`  GET  /api/v1/overview`);
-    console.log(`  GET  /api/v1/pools`);
-    console.log(`  GET  /api/v1/pools/:id/stocks`);
+    console.log(`  GET  /api/v1/pools/:id/stocks  (已整合至 /api/v1/overview)`);
     console.log(`  GET  /api/v1/analysis/batch?codes=`);
     console.log(`  POST /api/v1/analysis/run`);
     console.log(`  POST /api/v1/stocks/repair-names`);
