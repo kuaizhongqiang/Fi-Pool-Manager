@@ -73,24 +73,51 @@ export async function runPoolAnalysis(poolId: number, force?: boolean) {
 }
 
 /**
- * 对指定股池中所有股票运行完整流水线。
+ * 列出所有股池（供 CLI --all 使用）。
  *
- * @param poolId - 股池 ID
- * @param force  - 可选，true 则强制重新执行
- * @returns { success: true, data: { total: number } }
+ * @returns 股池列表（含 id / name）
  */
-export async function runPoolFullPipeline(poolId: number, force?: boolean) {
+export async function listAllPools() {
+  return poolService.listPools();
+}
+
+/**
+ * 对指定股池中所有股票运行完整流水线（支持多池串行执行）。
+ *
+ * @param poolIds - 股池 ID 或 ID 数组
+ * @param force   - 可选，true 则强制重新执行，默认 false
+ * @returns { success: true, data: { total: number } }
+ *
+ * @example
+ * // 单池
+ * await runPoolFullPipeline(1);
+ * // 多池串行
+ * await runPoolFullPipeline([1, 2, 3]);
+ */
+export async function runPoolFullPipeline(poolIds: number | number[], force?: boolean) {
   try {
-    const stocks = await poolService.getPoolStocks(poolId);
+    const ids = Array.isArray(poolIds) ? poolIds : [poolIds];
     let completed = 0;
-    for (const s of stocks) {
-      try {
-        await pipelineService.runFullPipeline(s.code, force);
-        completed++;
-      } catch (err) {
-        console.warn(`[runPoolFullPipeline] ${s.code} 失败:`, (err as Error).message);
+
+    for (const pid of ids) {
+      const stocks = await poolService.getPoolStocks(pid);
+      if (stocks.length === 0) {
+        console.log(`[runPoolFullPipeline] 股池 ${pid} 无股票，跳过`);
+        continue;
       }
+      console.log(`[runPoolFullPipeline] 开始股池 ${pid} (${stocks.length} 只股票)`);
+
+      for (const s of stocks) {
+        try {
+          await pipelineService.runFullPipeline(s.code, force);
+          completed++;
+        } catch (err) {
+          console.warn(`[runPoolFullPipeline] ${s.code} 失败:`, (err as Error).message);
+        }
+      }
+      console.log(`[runPoolFullPipeline] 股池 ${pid} 完成`);
     }
+
     // 自动触发每日综述 v2（仅当有股票成功完成时）
     if (completed > 0) {
       try {
@@ -121,4 +148,24 @@ export async function refreshData(code?: string) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false as const, error: { code: 'RATE_LIMIT', message } };
   }
+}
+
+/**
+ * 停止指定流水线。
+ *
+ * @param pipelineId - 流水线 ID（由 runFullPipeline 返回）
+ * @returns { success: true, data: { cancelled: boolean } }
+ */
+export async function stopPipeline(pipelineId: string) {
+  const cancelled = pipelineService.cancelPipeline(pipelineId);
+  return { success: true as const, data: { cancelled } };
+}
+
+/**
+ * 列出所有运行中的流水线。
+ *
+ * @returns 流水线 ID 列表
+ */
+export async function listPipelines() {
+  return pipelineService.listRunningPipelines();
 }

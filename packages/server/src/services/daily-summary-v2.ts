@@ -20,6 +20,7 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import * as llmService from './llm.js';
 import * as sessionService from './session.js';
 import * as embeddingService from './embedding.js';
+import { getStockSectors } from './sector.js';
 
 // ─── 常量 ────────────────────────────────────────────────────────
 
@@ -122,7 +123,7 @@ function selectAnomalyStocks(date: string): AnomalyStock[] {
  * 构建多维分析 prompt。
  * 一次 LLM 调用完成四维度分析，输出结构化 JSON。
  */
-function buildMultiDimPrompt(stock: AnomalyStock): string {
+function buildMultiDimPrompt(stock: AnomalyStock, sectorInfo?: string): string {
   return `你是一位A股多维分析师。请从以下四个维度分析 ${stock.code} ${stock.name} 今日的异常表现。
 
 ## 输入数据
@@ -141,7 +142,7 @@ function buildMultiDimPrompt(stock: AnomalyStock): string {
 - price：价格维度 — 涨跌幅、价格偏离、技术形态
 - sentiment：舆情维度 — 舆情与结论是否相悖
 - volume：交易量维度 — 放量/缩量情况
-- sector：板块维度 — 所属板块整体表现关联
+- sector：板块维度 — 所属板块整体表现关联${sectorInfo ? `\n\n## 板块数据（实时）\n${sectorInfo}` : ''}
 
 ## 输出格式（仅输出 JSON）
 {
@@ -200,8 +201,21 @@ async function analyzeAnomalyStock(
   stock: AnomalyStock,
   date: string,
 ): Promise<DimensionAnalysis[]> {
+  // 0. 获取板块数据（注入到 prompt 让 LLM 有真实数据可参考）
+  let sectorInfo: string | undefined;
+  try {
+    const sectors = await getStockSectors(stock.code);
+    if (sectors.length > 0) {
+      sectorInfo = sectors
+        .map(s => `- ${s.name}(${s.code}): ${s.changePct >= 0 ? '+' : ''}${s.changePct.toFixed(2)}% [${s.type === 'industry' ? '行业' : '概念'}]`)
+        .join('\n');
+    }
+  } catch (err) {
+    console.warn(`[daily-summary-v2] 获取板块数据失败 (${stock.code}):`, (err as Error).message);
+  }
+
   // 1. 构造 prompt 并调用 LLM
-  const prompt = buildMultiDimPrompt(stock);
+  const prompt = buildMultiDimPrompt(stock, sectorInfo);
   const sid = sessionService.createSession();
   sessionService.appendMessage(sid, 'system', prompt);
 

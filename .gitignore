@@ -35,3 +35,18 @@ npm-debug.log*
 
 # Generated review files
 PM_REVIEW.md
+
+# Build artifacts (root-level)
+packages/server/drizzle.config.js
+packages/server/drizzle.config.js.map
+packages/server/drizzle.config.d.ts
+packages/server/drizzle.config.d.ts.map
+packages/server/vitest.config.js
+packages/server/vitest.config.js.map
+packages/server/vitest.config.d.ts
+packages/server/vitest.config.d.ts.map
+# Test build outputs
+packages/server/tests/**/*.js
+packages/server/tests/**/*.js.map
+packages/server/tests/**/*.d.ts
+packages/server/tests/**/*.d.ts.map

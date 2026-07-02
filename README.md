@@ -19,8 +19,10 @@ A 股股池管理服务端。管理自定义股票池、获取日行情数据、
 | 🌐 舆情搜索 | DashScope 联网搜索（可选） | ✅ |
 | 🔍 向量检索 | 语义搜索历史分析报告 | ✅ |
 | 📋 每日综述 | 流水线完成后自动触发 LLM 生成每日投资回顾 | ✅ |
-| 🖥️ CLI | 23+ 子命令，Commander.js | ✅ |
-| 🔌 OpenClaw 插件 | 30 个 MCP 工具 | ✅ |
+| 🏭 板块数据 | 东方财富行业/概念板块数据源（多维分析注入） | ✅ |
+| 🛑 流水线控制 | 多池串行编排 + 停止命令 | ✅ |
+| 🖥️ CLI | 25+ 子命令，Commander.js | ✅ |
+| 🔌 OpenClaw 插件 | 29 个 MCP 工具 | ✅ |
 
 ## 快速开始
 
@@ -83,8 +85,19 @@ npx fi-pool pool add-stocks 1 600519 000858 000568
 npx fi-pool get-stock 600519
 npx fi-pool get-daily 600519 2026-01-01 2026-06-29
 
-# 运行分析流水线
+# 运行分析流水线（单股）
 npx fi-pool run-pipeline 600519
+
+# 多池串行执行
+npx fi-pool run-pool-pipeline 1 2 3 --force
+npx fi-pool run-pool-pipeline --all
+
+# 停止流水线
+npx fi-pool stop-pipeline pipe-xxx-xxxxxx
+npx fi-pool list-pipelines
+
+# 每日综述（v2）
+npx fi-pool daily-summary-v2
 
 # 查看报告
 npx fi-pool get-analysis 600519 2026-06-29

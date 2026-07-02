@@ -608,7 +608,7 @@ const tools: ToolDefinition[] = [
 
 export default {
   name: 'fi-pool-manager',
-  version: '0.2.4',
+  version: '0.3.6',
   description: 'A股股池管理 — 管理股票池、获取行情、技术分析、LLM 分析报告',
 
   /** MCP 工具定义列表 */

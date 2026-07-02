@@ -518,11 +518,25 @@ program
 
 program
   .command('run-pool-pipeline')
-  .description('对股池所有股票运行完整流水线')
-  .argument('<poolId>', '股池 ID')
-  .action(async (poolId: string) => {
+  .description('对股池所有股票运行完整流水线（支持多个池 ID 串行执行）')
+  .argument('<poolIds...>', '股池 ID（可传多个，如 1 2 3；或用 --all）')
+  .option('--all', '对所有股池串行执行')
+  .option('--force', '强制重新执行（跳过缓存检查）')
+  .action(async (poolIds: string[], options: { all?: boolean; force?: boolean }) => {
     try {
-      const result = await exec.runPoolFullPipeline(parseInt(poolId, 10));
+      let ids: number[];
+      if (options.all) {
+        const pools = await exec.listAllPools();
+        ids = pools.map(p => p.id);
+        console.log(`[run-pool-pipeline] 对所有 ${ids.length} 个股池串行执行`);
+      } else {
+        ids = poolIds.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        if (ids.length === 0) {
+          printError('请指定至少一个有效的股池 ID');
+          return;
+        }
+      }
+      const result = await exec.runPoolFullPipeline(ids, options.force);
       if (result.success) {
         printSuccess(`股池全流水线完成: 共 ${result.data?.total} 只股票`);
       } else {
@@ -550,6 +564,41 @@ program
     }
   });
 
+// ─── Pipeline 控制 ─────────────────────────────────────────────
+
+program
+  .command('stop-pipeline')
+  .description('停止指定运行中的流水线')
+  .argument('<pipelineId>', '流水线 ID（如 pipe-xxx）')
+  .action(async (pipelineId: string) => {
+    try {
+      const result = await exec.stopPipeline(pipelineId);
+      if (result.data?.cancelled) {
+        printSuccess(`流水线 ${pipelineId} 已取消`);
+      } else {
+        console.warn(`流水线 ${pipelineId} 不存在或已结束`);
+      }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('list-pipelines')
+  .description('列出所有运行中的流水线')
+  .action(async () => {
+    try {
+      const pipelines = await exec.listPipelines();
+      if (pipelines.length === 0) {
+        console.log('(无运行中的流水线)');
+      } else {
+        pipelines.forEach((id: string) => console.log(`  ${id}`));
+      }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
 // ─── Auxiliary ──────────────────────────────────────────────────
 
 program
@@ -567,9 +616,11 @@ program
 
 program
   .command('daily-summary')
-  .description('生成每日综合股池综述（v1，兼容旧数据）')
+  .description('⚠ DEPRECATED: 请使用 daily-summary-v2 替代（v1 因 prompt 过长始终 400）')
   .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
   .action(async (date?: string) => {
+    console.warn('\n⚠ [DEPRECATED] daily-summary v1 已废弃，因 MAX_INPUT_TOKENS=3000 限制始终返回 400 错误。');
+    console.warn('  请使用 daily-summary-v2 替代:\n    fi-pool daily-summary-v2 [date]\n');
     try {
       const result = await aux.generateDailySummaryReport(date);
       dailySummaryService.printDailySummary(result);

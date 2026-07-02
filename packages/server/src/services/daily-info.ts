@@ -28,8 +28,9 @@ const MIN_FETCH_INTERVAL = Math.max(200, parseInt(process.env.DATA_FETCH_INTERVA
 /**
  * 确保两次请求之间满足最小间隔。
  * 如果上次请求至今不足 MIN_FETCH_INTERVAL，则等待剩余时间。
+ * 导出供其他服务（如 sector.ts）共享使用。
  */
-async function enforceRateLimit(): Promise<void> {
+export async function enforceRateLimit(): Promise<void> {
   const now = Date.now();
   const elapsed = now - lastFetchTime;
   if (elapsed < MIN_FETCH_INTERVAL) {

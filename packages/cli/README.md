@@ -22,21 +22,46 @@ npx fi-pool report --code 600519 --mode overview
 - **管理类**：create-pool, delete-pool, add-stocks, remove-stocks, set-signal
 - **查询类**：list-pools, get-stock, get-daily, get-report, status
 - **命令类**：output-report, output-final, semantic-search, session
-- **执行类**：run-analysis, run-pipeline, refresh-data
-- **辅助类**：help, list, version, config, daily-summary
+- **执行类**：run-analysis, run-pipeline, run-pool-pipeline (支持多池), refresh-data
+- **流水线控制类**：stop-pipeline, list-pipelines
+- **辅助类**：help, list, version, config, daily-summary (已废弃，建议用 daily-summary-v2)
 
-## 新增命令
+## 流水线控制
 
-### daily-summary
-
-生成每日综合股池综述，汇总所有股池的分析信号和报告：
+### 多池串行执行
 
 ```bash
-# 生成今天的综述
-fi-pool daily-summary
+# 单池执行
+fi-pool run-pool-pipeline 1
 
-# 生成指定日期的综述
-fi-pool daily-summary 2026-06-30
+# 多池串行（池1→池2→池3）
+fi-pool run-pool-pipeline 1 2 3
+
+# 所有股池串行
+fi-pool run-pool-pipeline --all
+
+# 带 --force 强制重新执行
+fi-pool run-pool-pipeline --all --force
 ```
 
-在运行 `run-pool-pipeline` 命令后，每日综述会自动触发输出。
+### 停止流水线
+
+```bash
+# 停止指定流水线
+fi-pool stop-pipeline pipe-xxx-xxxxxx
+
+# 查看运行中的流水线
+fi-pool list-pipelines
+```
+
+### 每日综述
+
+```bash
+# v2（推荐）
+fi-pool daily-summary-v2 [date]
+
+# v1（已废弃，因 prompt 过长始终 400）
+fi-pool daily-summary [date]
+```
+
+在运行 `run-pool-pipeline` 命令后，每日综述 v2 会自动触发输出。
