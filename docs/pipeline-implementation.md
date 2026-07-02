@@ -12,8 +12,10 @@
 │  数据获取  →   客观报告   →   舆情获取  →  多角色分析  →  综合报告    │
 │               (LLM)         (搜索API)      (本地LLM)     (本地LLM)    │
 │                                                                        │
-│  session_id 贯穿整个流水线，用于上下文管理                              │
+│  session_id + pipeline_id 贯穿整个流水线，用于上下文管理和取消控制          │
 │  向量检索在 Stage 2 和 Stage 5 前调用                                   │
+│  多池支持：run-pool-pipeline 接受多个 poolId 或 --all 串行执行            │
+│  取消控制：stop-pipeline <pipelineId> 通过 AbortController 中断流水线    │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 

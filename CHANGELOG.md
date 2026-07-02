@@ -1,3 +1,20 @@
+# [0.3.6](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.5...v0.3.6) (2026-07-02)
+
+### Features
+
+* **pipeline**: 流水线串行执行 — run-pool-pipeline 支持多池 ID + --all 参数 (#124)
+* **pipeline**: 增加流水线停止命令 — stop-pipeline / list-pipelines (#123)
+* **sector**: 板块数据源接入（东方财富免费 API）— 多维分析注入真实板块数据 (#102)
+
+### Bug Fixes
+
+* **embedding**: getApiUrl() 回退 LLM_BASE_URL，远程部署自动适配 (#120)
+* **daily-summary**: v1 标记废弃并提示使用 daily-summary-v2 (#121)
+
+### Documentation
+
+* **env**: .env.example 已包含 EMBEDDING_API_URL 注释说明 (#122)
+
 # [0.3.5](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.4...v0.3.5) (2026-06-30)
 
 ### Bug Fixes

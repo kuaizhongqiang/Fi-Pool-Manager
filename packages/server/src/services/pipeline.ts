@@ -30,6 +30,46 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import type { OHLCV } from '../utils/indicators.js';
 import { countWords } from './word-count.js';
 
+// ─── Pipeline 管理器（取消控制）─────────────────────────────────────
+
+/** 运行中的流水线取消控制器 */
+const runningPipelines = new Map<string, AbortController>();
+
+/**
+ * 注册一个运行中的流水线，返回可被外部取消的 signal。
+ */
+export function registerPipeline(id: string): AbortSignal {
+  const ctrl = new AbortController();
+  runningPipelines.set(id, ctrl);
+  return ctrl.signal;
+}
+
+/**
+ * 取消指定流水线。
+ * @returns true 表示找到了并取消，false 表示流水线 ID 不存在
+ */
+export function cancelPipeline(id: string): boolean {
+  const ctrl = runningPipelines.get(id);
+  if (!ctrl) return false;
+  ctrl.abort();
+  runningPipelines.delete(id);
+  return true;
+}
+
+/**
+ * 列出所有运行中的流水线 ID。
+ */
+export function listRunningPipelines(): string[] {
+  return Array.from(runningPipelines.keys());
+}
+
+/**
+ * 流水线完成后从注册表中移除。
+ */
+export function deregisterPipeline(id: string): void {
+  runningPipelines.delete(id);
+}
+
 // ─── 公开类型 ────────────────────────────────────────────────────
 
 export interface Stage1Result {
@@ -463,11 +503,15 @@ export class Pipeline {
   code: string;
   sessionId: string;
   force: boolean;
+  pipelineId: string;
+  abortSignal?: AbortSignal;
 
-  constructor(code: string, force?: boolean) {
+  constructor(code: string, force?: boolean, pipelineId?: string, abortSignal?: AbortSignal) {
     this.code = code;
     this.force = force ?? false;
     this.sessionId = sessionService.createSession();
+    this.pipelineId = pipelineId || generatePipelineId();
+    this.abortSignal = abortSignal;
   }
 
   // ─── Stage 1: 数据获取 ──────────────────────────────────────────
@@ -954,9 +998,10 @@ export class Pipeline {
    * @param date - 报告日期
    * @returns 最终报告信息
    */
-  async stage5FinalReport(date: string): Promise<Stage5Result> {
+  async stage5FinalReport(date: string, externalPipelineId?: string): Promise<Stage5Result> {
     const db = getDatabase();
     const { code, sessionId } = this;
+    const pipelineId = externalPipelineId || this.pipelineId || generatePipelineId();
 
     // 1. 获取股票信息
     const stockInfo = await stockService.getStockByCode(code);
@@ -1030,8 +1075,6 @@ export class Pipeline {
     }
 
     // 7. 构造 prompt 并调用 LLM
-    const pipelineId = generatePipelineId();
-
     const prompt = buildFinalReportPrompt({
       code,
       name,
@@ -1156,25 +1199,29 @@ export class Pipeline {
    */
   async runFull(): Promise<PipelineResult> {
     const code = this.code;
-    console.log(`[pipeline] 开始全流水线: ${code} (session=${this.sessionId})`);
+    console.log(`[pipeline] 开始全流水线: ${code} (session=${this.sessionId}, pipelineId=${this.pipelineId})`);
 
     // Stage 1: 数据获取
+    if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);
     console.log(`[pipeline] Stage 1/5 — 数据获取: ${code}`);
     const stage1 = await this.stage1FetchData();
     const date = stage1.date;
     console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
 
     // Stage 2: 客观报告
+    if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);
     console.log(`[pipeline] Stage 2/5 — 客观报告: ${code}`);
     const stage2 = await this.stage2ObjectiveReport(date, this.force);
     console.log(`[pipeline] Stage 2 完成: id=${stage2.id}`);
 
     // Stage 3: 舆情获取
+    if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);
     console.log(`[pipeline] Stage 3/5 — 舆情获取: ${code}`);
     const stage3 = await this.stage3Sentiment(date, this.force);
     console.log(`[pipeline] Stage 3 完成: id=${stage3.id}`);
 
     // Stage 4: 多角色分析
+    if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);
     console.log(`[pipeline] Stage 4/5 — 多角色分析: ${code}`);
     const stage4 = await this.stage4MultiRole(
       date,
@@ -1186,8 +1233,9 @@ export class Pipeline {
     );
 
     // Stage 5: 最终报告
+    if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);
     console.log(`[pipeline] Stage 5/5 — 最终报告: ${code}`);
-    const stage5 = await this.stage5FinalReport(date);
+    const stage5 = await this.stage5FinalReport(date, this.pipelineId);
     console.log(
       `[pipeline] Stage 5 完成: id=${stage5.id}, pipelineId=${stage5.pipelineId}`,
     );
@@ -1252,13 +1300,22 @@ export async function stage1FetchData(code: string): Promise<Stage1Result> {
 /**
  * 运行完整流水线（Stage 1→5，向后兼容包装）。
  *
+ * 自动注册到 PipelineManager，支持外部取消。
+ *
  * @param code  - 股票代码
  * @param force - true 则强制重新执行（忽略已有缓存）
  * @returns 流水线运行结果（日期、流水线 ID、最终报告 ID）
  */
 export async function runFullPipeline(code: string, force?: boolean): Promise<PipelineResult> {
-  const pipeline = new Pipeline(code, force);
-  return pipeline.runFull();
+  const pipelineId = generatePipelineId();
+  const abortSignal = registerPipeline(pipelineId);
+  const pipeline = new Pipeline(code, force, pipelineId, abortSignal);
+  try {
+    const result = await pipeline.runFull();
+    return result;
+  } finally {
+    deregisterPipeline(pipelineId);
+  }
 }
 
 /**

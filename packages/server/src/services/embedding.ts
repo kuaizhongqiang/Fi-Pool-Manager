@@ -22,7 +22,9 @@ import { eq, and, sql } from 'drizzle-orm';
  * 使用惰性 getter 而非模块级常量，确保 dotenv 加载后的值生效。
  */
 function getApiUrl(): string {
-  return process.env.EMBEDDING_API_URL || 'http://127.0.0.1:1234/v1/embeddings';
+  return process.env.EMBEDDING_API_URL
+    || (process.env.LLM_BASE_URL ? `${process.env.LLM_BASE_URL}/v1/embeddings` : undefined)
+    || 'http://127.0.0.1:1234/v1/embeddings';
 }
 
 /** Embedding API 认证密钥（惰性读取） */
