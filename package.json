@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-manager",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "private": true,
   "description": "A股股池管理服务端",
   "workspaces": [

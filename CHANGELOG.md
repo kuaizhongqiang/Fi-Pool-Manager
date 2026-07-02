@@ -1,3 +1,13 @@
+# [0.3.8](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.7...v0.3.8) (2026-07-02)
+
+### Features
+
+* **api**: 重新设计 /api/v1/overview — 聚合返回完整股池+股票列表，消除 pools/:id/stocks 冗余端点和 N+1 请求 (#128)
+
+### Removals
+
+* **api**: 移除 /api/v1/pools 端点（已由增强的 /api/v1/overview 完全覆盖）
+
 # [0.3.7](https://github.com/kuaizhongqiang/Fi-Pool-Manager/compare/v0.3.6...v0.3.7) (2026-07-02)
 
 ### Bug Fixes
