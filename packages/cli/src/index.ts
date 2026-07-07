@@ -538,7 +538,13 @@ program
       }
       const result = await exec.runPoolFullPipeline(ids, options.force);
       if (result.success) {
-        printSuccess(`股池全流水线完成: 共 ${result.data?.total} 只股票`);
+        const skipped = result.data?.skipped ?? 0;
+        const total = result.data?.total ?? 0;
+        if (skipped > 0) {
+          printSuccess(`股池全流水线完成: 新执行 ${total} 只, 跳过 ${skipped} 只（已有 final_report）`);
+        } else {
+          printSuccess(`股池全流水线完成: 共 ${total} 只股票`);
+        }
       } else {
         printError(result.error?.message ?? '流水线失败');
       }
@@ -633,10 +639,96 @@ program
   .command('daily-summary-v2')
   .description('生成每日综合股池综述（v2，异常值驱动 + 多维分析 + RAG）')
   .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
+  .option('--verbose', '输出详细的诊断信息（各池覆盖率、分数分布等）')
+  .action(async (date?: string, options?: { verbose?: boolean }) => {
+    try {
+      const result = await dailySummaryV2Service.generateDailySummaryV2(date, options?.verbose);
+      dailySummaryV2Service.printDailySummaryV2(result);
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+// ─── Diagnostic Commands (v0.4.0) ────────────────────────────────────
+
+program
+  .command('check-data')
+  .description('检查某日期的数据完成度——各池的 final_report 覆盖情况')
+  .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
   .action(async (date?: string) => {
     try {
-      const result = await dailySummaryV2Service.generateDailySummaryV2(date);
-      dailySummaryV2Service.printDailySummaryV2(result);
+      const report = await query.checkDataCompleteness(date);
+      console.log(`\n  📊 数据完成度检查 — ${report.date}`);
+      console.log(`  ${'─'.repeat(40)}`);
+      console.log(`  总池股票: ${report.totalStocksInPools}`);
+      console.log(`  Final Report: ${report.totalFinalReports}`);
+      console.log(`  异常分数分布: min=${report.scoreDistribution.min}, max=${report.scoreDistribution.max}, avg=${report.scoreDistribution.avg}, >2.5阈值=${report.scoreDistribution.aboveThreshold}`);
+      console.log();
+      for (const p of report.pools) {
+        const status = p.withReport === p.totalStocks ? '✓' : p.withReport > 0 ? '◐' : '○';
+        console.log(`  ${status} 池 #${p.poolId} ${p.poolName}: ${p.withReport}/${p.totalStocks}`);
+        if (p.withoutReport > 0 && p.pendingStocks.length <= 5) {
+          console.log(`     未完成: ${p.pendingStocks.join(', ')}`);
+        } else if (p.withoutReport > 0) {
+          console.log(`     未完成: ${p.pendingStocks.length} 只`);
+        }
+      }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('pool-status')
+  .description('查看指定股池的分析进度——各股票在指定日期的 final_report 状态')
+  .argument('<poolId>', '股池 ID')
+  .option('--date <date>', '目标日期 yyyy-MM-dd（默认今天）')
+  .action(async (poolId: string, options: { date?: string }) => {
+    try {
+      const status = await query.getPoolAnalysisStatus(parseInt(poolId, 10), options.date);
+      console.log(`\n  📋 股池分析状态 — ${status.poolName} (${status.date})`);
+      console.log(`  ${'─'.repeat(40)}`);
+      console.log(`  总股票: ${status.totalStocks}`);
+      console.log(`  已完成: ${status.completedStocks}`);
+      console.log(`  待完成: ${status.pendingStocks}`);
+      console.log();
+      for (const s of status.stocks) {
+        const icon = s.hasReport ? '✓' : '○';
+        const score = s.anomalyScore !== null ? ` 异常分: ${s.anomalyScore.toFixed(1)}` : '';
+        console.log(`  ${icon} ${s.code} ${s.name}${score}`);
+      }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('summary-status')
+  .description('查看某日 daily-summary 的执行状态')
+  .argument('[date]', '目标日期 yyyy-MM-dd（默认今天）')
+  .action(async (date?: string) => {
+    try {
+      const status = await query.getDailySummaryStatus(date);
+      console.log(`\n  📋 每日综述状态 — ${status.date}`);
+      console.log(`  ${'─'.repeat(40)}`);
+      if (status.hasSummary) {
+        console.log(`  ✓ 综述已生成`);
+        console.log(`  异常股票: ${status.summaryRecord!.anomalyCount}`);
+        console.log(`  涉及总股票: ${status.summaryRecord!.totalStocks}`);
+        console.log(`  模型: ${status.summaryRecord!.modelUsed || '默认'}`);
+        console.log(`  概述长度: ${status.summaryRecord!.overviewLength} 字符`);
+        console.log(`  创建时间: ${status.summaryRecord!.createdAt}`);
+      } else {
+        console.log(`  ○ 综述未生成`);
+      }
+      console.log(`  维度分析条目: ${status.detailCount}`);
+      console.log(`  涉及异常股票: ${status.stockCountInDetail}`);
+      if (Object.keys(status.byDimension).length > 0) {
+        console.log(`  按维度分布:`);
+        for (const [dim, count] of Object.entries(status.byDimension)) {
+          console.log(`    ${dim}: ${count} 条`);
+        }
+      }
     } catch (err) {
       printError((err as Error).message);
     }

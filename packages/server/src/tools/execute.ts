@@ -11,6 +11,28 @@ import * as pipelineService from '../services/pipeline.js';
 import * as dailyInfoService from '../services/daily-info.js';
 import * as poolService from '../services/pool.js';
 import { generateDailySummaryV2, printDailySummaryV2 } from '../services/daily-summary-v2.js';
+import { getDatabase } from '../db/index.js';
+import { finalReport } from '../db/schema.js';
+import { eq, desc } from 'drizzle-orm';
+
+/**
+ * 检查某股票是否有已完成的 final_report。
+ * 用于断点重开：取最新的 final_report 记录。
+ *
+ * @param code - 股票代码
+ * @returns 最新 final_report 的 date 和 id，或 null
+ */
+function checkExistingFinalReport(code: string): { date: string; id: number } | null {
+  const db = getDatabase();
+  const row = db
+    .select({ id: finalReport.id, date: finalReport.date })
+    .from(finalReport)
+    .where(eq(finalReport.code, code))
+    .orderBy(desc(finalReport.date))
+    .limit(1)
+    .get();
+  return row ?? null;
+}
 
 /**
  * 对单只股票运行本地分析（数据获取 + 技术指标计算 + 客观报告）。
@@ -84,20 +106,28 @@ export async function listAllPools() {
 /**
  * 对指定股池中所有股票运行完整流水线（支持多池串行执行）。
  *
+ * 支持断点重开（Checkpoint/Resume）：
+ * - 非 --force 模式下，每只股票执行前检查该日期是否已有 final_report
+ * - 已有则跳过（视为已完成），无则执行
+ * - 中断后重新执行，已完成的股票自动跳过
+ *
  * @param poolIds - 股池 ID 或 ID 数组
- * @param force   - 可选，true 则强制重新执行，默认 false
- * @returns { success: true, data: { total: number } }
+ * @param force   - 可选，true 则强制重新执行（跳过缓存检查），默认 false
+ * @returns { success: true, data: { total: number, skipped: number } }
  *
  * @example
  * // 单池
  * await runPoolFullPipeline(1);
  * // 多池串行
  * await runPoolFullPipeline([1, 2, 3]);
+ * // 强制重跑
+ * await runPoolFullPipeline([1, 2], true);
  */
 export async function runPoolFullPipeline(poolIds: number | number[], force?: boolean) {
   try {
     const ids = Array.isArray(poolIds) ? poolIds : [poolIds];
     let completed = 0;
+    let skipped = 0;
 
     for (const pid of ids) {
       const stocks = await poolService.getPoolStocks(pid);
@@ -107,15 +137,29 @@ export async function runPoolFullPipeline(poolIds: number | number[], force?: bo
       }
       console.log(`[runPoolFullPipeline] 开始股池 ${pid} (${stocks.length} 只股票)`);
 
-      for (const s of stocks) {
+      for (let i = 0; i < stocks.length; i++) {
+        const s = stocks[i];
+        const progress = `[${i + 1}/${stocks.length}]`;
+
+        // 断点重开：检查该股该日期是否已有 final_report（非 force 模式）
+        if (!force) {
+          const existing = checkExistingFinalReport(s.code);
+          if (existing) {
+            console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 已有 final_report (date=${existing.date}), 跳过`);
+            skipped++;
+            continue;
+          }
+        }
+
         try {
           await pipelineService.runFullPipeline(s.code, force);
           completed++;
+          console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 完成`);
         } catch (err) {
-          console.warn(`[runPoolFullPipeline] ${s.code} 失败:`, (err as Error).message);
+          console.warn(`[runPoolFullPipeline] ${progress} ${s.code} 失败:`, (err as Error).message);
         }
       }
-      console.log(`[runPoolFullPipeline] 股池 ${pid} 完成`);
+      console.log(`[runPoolFullPipeline] 股池 ${pid} 完成 (完成 ${completed} / 跳过 ${skipped} / 共 ${stocks.length})`);
     }
 
     // 自动触发每日综述 v2（仅当有股票成功完成时）
@@ -127,7 +171,7 @@ export async function runPoolFullPipeline(poolIds: number | number[], force?: bo
         console.warn(`[runPoolFullPipeline] 生成每日综述失败:`, (err as Error).message);
       }
     }
-    return { success: true as const, data: { total: completed } };
+    return { success: true as const, data: { total: completed, skipped } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false as const, error: { code: 'DB_ERROR', message } };

@@ -5,7 +5,7 @@
  * 将 fi-pool-server 的能力暴露为 OpenClaw 插件，
  * 通过 MCP 协议供 Claude、Cursor 等 AI 代理调用。
  *
- * 公开 29 个工具，覆盖管理、查询、命令、执行、辅助五大类。
+ * 公开 32 个工具，覆盖管理、查询、命令、执行、辅助五大类。
  */
 
 import { ensureDatabase } from 'fi-pool-server/db/migrate.js';
@@ -14,6 +14,7 @@ import * as query from 'fi-pool-server/tools/query.js';
 import * as cmd from 'fi-pool-server/tools/command.js';
 import * as exec from 'fi-pool-server/tools/execute.js';
 import * as aux from 'fi-pool-server/tools/auxiliary.js';
+import { generateDailySummaryV2 } from 'fi-pool-server/services/daily-summary-v2.js';
 
 /** 从 JSON Schema 工具定义中提取 handler 的返回类型 */
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
@@ -174,7 +175,7 @@ const tools: ToolDefinition[] = [
     },
   },
 
-  // ── 查询类（7） ─────────────────────────────────────────────
+  // ── 查询类（10） ────────────────────────────────────────────
 
   {
     name: 'list_pools',
@@ -298,6 +299,53 @@ const tools: ToolDefinition[] = [
     },
     handler: async () => {
       return query.getSystemStatus();
+    },
+  },
+
+  {
+    name: 'check_data_completeness',
+    description: '检查某日期的数据完成度——各股池的 final_report 覆盖情况、异常分数分布',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: '目标日期 yyyy-MM-dd（可选，默认今天）' },
+      },
+    },
+    handler: async (args) => {
+      return query.checkDataCompleteness(args.date ? String(args.date) : undefined);
+    },
+  },
+
+  {
+    name: 'get_pool_analysis_status',
+    description: '查看指定股池的分析进度——各股票在指定日期的 final_report 状态',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        poolId: { type: 'number', description: '股池 ID' },
+        date: { type: 'string', description: '目标日期 yyyy-MM-dd（可选，默认今天）' },
+      },
+      required: ['poolId'],
+    },
+    handler: async (args) => {
+      return query.getPoolAnalysisStatus(
+        parseIntArg(args.poolId),
+        args.date ? String(args.date) : undefined,
+      );
+    },
+  },
+
+  {
+    name: 'get_daily_summary_status',
+    description: '查看某日 daily-summary 的执行状态——是否已生成、各维度分析明细',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: '目标日期 yyyy-MM-dd（可选，默认今天）' },
+      },
+    },
+    handler: async (args) => {
+      return query.getDailySummaryStatus(args.date ? String(args.date) : undefined);
     },
   },
 
@@ -473,16 +521,25 @@ const tools: ToolDefinition[] = [
 
   {
     name: 'run_pool_full_pipeline',
-    description: '对指定股池中所有股票运行完整流水线',
+    description: '对指定股池运行完整流水线，支持多池和断点重开（--force 强制重跑）',
     inputSchema: {
       type: 'object',
       properties: {
-        poolId: { type: 'number', description: '股池 ID' },
+        poolIds: {
+          oneOf: [
+            { type: 'number', description: '单个股池 ID' },
+            { type: 'array', items: { type: 'number' }, description: '多个股池 ID 数组' },
+          ],
+          description: '股池 ID 或 ID 数组',
+        },
+        force: { type: 'boolean', description: 'true 则强制重新执行（跳过缓存检查）' },
       },
-      required: ['poolId'],
+      required: ['poolIds'],
     },
     handler: async (args) => {
-      return exec.runPoolFullPipeline(parseIntArg(args.poolId));
+      const raw = args.poolIds;
+      const ids = Array.isArray(raw) ? raw.map((v: unknown) => parseIntArg(v)) : [parseIntArg(raw)];
+      return exec.runPoolFullPipeline(ids, args.force === true);
     },
   },
 
@@ -517,8 +574,26 @@ const tools: ToolDefinition[] = [
   },
 
   {
+    name: 'generate_daily_summary_v2',
+    description: '【推荐】生成每日综合股池综述 v2——异常值驱动 + 多维分析 + RAG，带 --verbose 诊断模式',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: '可选目标日期 yyyy-MM-dd（默认今天）' },
+        verbose: { type: 'boolean', description: 'true 则输出详细的诊断信息（各池覆盖率、分数分布等）' },
+      },
+    },
+    handler: async (args) => {
+      return generateDailySummaryV2(
+        args.date ? String(args.date) : undefined,
+        args.verbose === true,
+      );
+    },
+  },
+
+  {
     name: 'generate_daily_summary',
-    description: '生成每日综合股池综述，汇总所有股池信号和分析报告，调用 LLM 生成完整投资回顾',
+    description: '【已废弃】生成每日综合股池（v1），请使用 generate_daily_summary_v2 替代',
     inputSchema: {
       type: 'object',
       properties: {
@@ -608,7 +683,7 @@ const tools: ToolDefinition[] = [
 
 export default {
   name: 'fi-pool-manager',
-  version: '0.3.8',
+  version: '0.4.0',
   description: 'A股股池管理 — 管理股票池、获取行情、技术分析、LLM 分析报告',
 
   /** MCP 工具定义列表 */

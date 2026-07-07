@@ -20,8 +20,10 @@ A 股股池管理服务端。管理自定义股票池、获取日行情数据、
 | 🔍 向量检索 | 语义搜索历史分析报告 | ✅ |
 | 📋 每日综述 | 流水线完成后自动触发 LLM 生成每日投资回顾 | ✅ |
 | 🏭 板块数据 | 东方财富行业/概念板块数据源（多维分析注入） | ✅ |
-| 🛑 流水线控制 | 多池串行编排 + 停止命令 | ✅ |
-| 🖥️ CLI | 25+ 子命令，Commander.js | ✅ |
+| 🛑 流水线控制 | 多池串行编排 + 停止命令 + **断点重开** | ✅ |
+| 🔄 断点重开 | 中断后自动跳过已完成股票（v0.4.0） | ✅ |
+| 📊 诊断命令 | check-data / pool-status / summary-status（v0.4.0） | ✅ |
+| 🖥️ CLI | 28+ 子命令，Commander.js | ✅ |
 | 🔌 OpenClaw 插件 | 29 个 MCP 工具 | ✅ |
 
 ## 快速开始
@@ -88,7 +90,7 @@ npx fi-pool get-daily 600519 2026-01-01 2026-06-29
 # 运行分析流水线（单股）
 npx fi-pool run-pipeline 600519
 
-# 多池串行执行
+# 多池串行执行（支持断点重开）
 npx fi-pool run-pool-pipeline 1 2 3 --force
 npx fi-pool run-pool-pipeline --all
 
@@ -96,8 +98,14 @@ npx fi-pool run-pool-pipeline --all
 npx fi-pool stop-pipeline pipe-xxx-xxxxxx
 npx fi-pool list-pipelines
 
-# 每日综述（v2）
+# 每日综述（v2，耗时分析）
 npx fi-pool daily-summary-v2
+npx fi-pool daily-summary-v2 --verbose
+
+# 诊断命令（v0.4.0）
+npx fi-pool check-data
+npx fi-pool pool-status 1
+npx fi-pool summary-status
 
 # 查看报告
 npx fi-pool get-analysis 600519 2026-06-29
@@ -120,13 +128,25 @@ npx fi-pool get-final 600519 2026-06-29 --mode full
 | 舆情分析师 | 市场情绪解读 | 300 字 | 200 字 |
 | 风控官 | 风险评估 | 300 字 | 300 字 |
 
+### 断点重开（v0.4.0）
+
+`run-pool-pipeline` 支持断点重开。非 `--force` 模式下，每只股票执行前自动检查 `final_report` 是否存在：
+
+```
+[runPoolFullPipeline] [1/26] 000XXX 股票名 完成
+[runPoolFullPipeline] [2/26] 000XXX 已有 final_report, 跳过
+...
+[runPoolFullPipeline] 股池 1 完成 (完成 20 / 跳过 6 / 共 26)
+```
+
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
 | [项目综述](docs/overview.md) | 架构总览、数据流、技术栈 |
+| [CLI 使用指南](docs/cli-guide.md) | 面向 agent 的完整操作手册（v0.4.0 新增） |
 | [API 设计](docs/api-design.md) | 29 个工具的入参、返回值、错误码 |
-| [数据库 Schema](docs/database-schema.md) | 10 张表的精确字段与索引 |
+| [数据库 Schema](docs/database-schema.md) | 12 张表的精确字段与索引 |
 | [流水线实现](docs/pipeline-implementation.md) | 各阶段 Prompt 框架、字数控制 |
 | [配置与部署](docs/deployment.md) | .env 配置项、Docker、Ubuntu 部署 |
 | [测试策略](docs/test-strategy.md) | 测试框架、范围和命令 |
@@ -176,7 +196,7 @@ fi-pool-manager/
 
 ## 版本
 
-遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。当前版本 `0.1.0`。
+遵循 [语义化版本 2.0.0](https://semver.org/lang/zh-CN/)。当前版本 `0.4.0`。
 
 已发布到 npm：[`fi-pool-cli`](https://www.npmjs.com/package/fi-pool-cli) · [`fi-pool-server`](https://www.npmjs.com/package/fi-pool-server)
 

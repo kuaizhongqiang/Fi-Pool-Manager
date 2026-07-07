@@ -11,8 +11,16 @@ import * as stockService from '../services/stock.js';
 import * as dailyInfoService from '../services/daily-info.js';
 import * as llmService from '../services/llm.js';
 import { getDatabase, getDbPath } from '../db/index.js';
-import { dailyAnalysisReport, finalReport, dailyInfo, stock, pool } from '../db/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import {
+  dailyAnalysisReport,
+  finalReport,
+  dailySummary,
+  dailySummaryDetail,
+  dailyInfo,
+  stock,
+  pool as poolTable,
+} from '../db/schema.js';
+import { eq, and, sql, desc } from 'drizzle-orm';
 import { VERSION } from '../index.js';
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
@@ -161,6 +169,199 @@ export async function getFinalReport(code: string, date: string, mode: 'overview
 }
 
 /**
+ * 检查某日期的数据完成度——各池的 final_report 覆盖情况。
+ *
+ * 返回每个股池中已有 final_report 和缺失的股票数量，
+ * 以及 anomalyScore 的分布概览。
+ *
+ * @param date - 目标日期 yyyy-MM-dd（默认今天）
+ * @returns 数据完成度报告
+ *
+ * @example
+ * const report = await checkDataCompleteness('2026-07-07');
+ * console.log(report.pools);
+ */
+export async function checkDataCompleteness(date?: string) {
+  const db = getDatabase();
+  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+
+  // 1. 获取所有股池
+  const pools = await poolService.listPools();
+
+  // 2. 获取该日期所有 final_report
+  const allReports = db
+    .select({ code: finalReport.code, anomalyScore: finalReport.anomalyScore })
+    .from(finalReport)
+    .where(eq(finalReport.date, targetDate))
+    .all();
+
+  const reportCodes = new Set(allReports.map((r) => r.code));
+  const anomalyScores = allReports.map((r) => r.anomalyScore);
+
+  // 3. 按股池统计
+  const poolStats = await Promise.all(
+    pools.map(async (p) => {
+      const stocks = await poolService.getPoolStocks(p.id);
+      const withReport = stocks.filter((s) => reportCodes.has(s.code));
+      const withoutReport = stocks.filter((s) => !reportCodes.has(s.code));
+      return {
+        poolId: p.id,
+        poolName: p.name,
+        totalStocks: stocks.length,
+        withReport: withReport.length,
+        withoutReport: withoutReport.length,
+        pendingStocks: withoutReport.map((s) => s.code),
+      };
+    }),
+  );
+
+  // 4. 汇总
+  const totalWithReport = allReports.length;
+  const scoreStats =
+    anomalyScores.length > 0
+      ? {
+          min: Math.min(...anomalyScores).toFixed(1),
+          max: Math.max(...anomalyScores).toFixed(1),
+          avg: (anomalyScores.reduce((a, b) => a + b, 0) / anomalyScores.length).toFixed(1),
+          aboveThreshold: anomalyScores.filter((s) => s >= 2.5).length,
+        }
+      : { min: 'N/A', max: 'N/A', avg: 'N/A', aboveThreshold: 0 };
+
+  return {
+    date: targetDate,
+    totalStocksInPools: poolStats.reduce((sum, p) => sum + p.totalStocks, 0),
+    totalFinalReports: totalWithReport,
+    scoreDistribution: scoreStats,
+    pools: poolStats,
+  };
+}
+
+/**
+ * 查看指定股池的分析进度——各股票在指定日期的 final_report 状态。
+ *
+ * @param poolId - 股池 ID
+ * @param date   - 目标日期 yyyy-MM-dd（默认今天）
+ * @returns 股池分析状态
+ *
+ * @example
+ * const status = await getPoolAnalysisStatus(1);
+ * status.stocks.forEach(s => console.log(s.code, s.hasReport, s.anomalyScore));
+ */
+export async function getPoolAnalysisStatus(poolId: number, date?: string) {
+  const db = getDatabase();
+  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+
+  const stocks = await poolService.getPoolStocks(poolId);
+  const poolInfo = await poolService.getPoolById(poolId);
+
+  // 批量查询 final_report
+  const reports = db
+    .select()
+    .from(finalReport)
+    .where(
+      and(
+        eq(finalReport.date, targetDate),
+        sql`${finalReport.code} IN (${sql.join(stocks.map((s) => sql`${s.code}`), sql`,`)})`,
+      ),
+    )
+    .all();
+
+  const reportMap = new Map(reports.map((r) => [r.code, r]));
+
+  const stockStatus = stocks.map((s) => {
+    const r = reportMap.get(s.code);
+    return {
+      code: s.code,
+      name: s.name,
+      hasReport: !!r,
+      anomalyScore: r?.anomalyScore ?? null,
+      pipelineId: r?.pipelineId ?? null,
+      summary: r?.summary?.slice(0, 100) ?? null,
+    };
+  });
+
+  return {
+    poolId,
+    poolName: poolInfo?.name ?? `Pool #${poolId}`,
+    date: targetDate,
+    totalStocks: stocks.length,
+    completedStocks: stockStatus.filter((s) => s.hasReport).length,
+    pendingStocks: stockStatus.filter((s) => !s.hasReport).length,
+    stocks: stockStatus,
+  };
+}
+
+/**
+ * 查看某日 daily-summary 的执行状态。
+ *
+ * 返回当日 daily_summary 记录、异常股票数、
+ * 各维度分析明细的数据分布。
+ *
+ * @param date - 目标日期 yyyy-MM-dd（默认今天）
+ * @returns daily-summary 状态
+ *
+ * @example
+ * const status = await getDailySummaryStatus('2026-07-07');
+ * console.log(status.dimensions);
+ */
+export async function getDailySummaryStatus(date?: string) {
+  const db = getDatabase();
+  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+
+  // 1. 查询 daily_summary
+  const summary = db
+    .select()
+    .from(dailySummary)
+    .where(eq(dailySummary.date, targetDate))
+    .get();
+
+  // 2. 查询 daily_summary_detail
+  const details = db
+    .select()
+    .from(dailySummaryDetail)
+    .where(eq(dailySummaryDetail.date, targetDate))
+    .all();
+
+  // 3. 按维度分组
+  const byDimension: Record<string, number> = {};
+  for (const d of details) {
+    byDimension[d.dimension] = (byDimension[d.dimension] ?? 0) + 1;
+  }
+
+  // 4. 按股票分组
+  const byStock = new Map<string, { dimensions: string[]; maxScore: number }>();
+  for (const d of details) {
+    const existing = byStock.get(d.stockCode) ?? { dimensions: [], maxScore: 0 };
+    existing.dimensions.push(d.dimension);
+    existing.maxScore = Math.max(existing.maxScore, d.anomalyScore);
+    byStock.set(d.stockCode, existing);
+  }
+
+  return {
+    date: targetDate,
+    hasSummary: !!summary,
+    summaryRecord: summary
+      ? {
+          anomalyCount: summary.anomalyCount,
+          totalStocks: summary.totalStocks,
+          modelUsed: summary.modelUsed,
+          overviewLength: summary.overview.length,
+          fullReportLength: summary.fullReport.length,
+          createdAt: summary.createdAt,
+        }
+      : null,
+    detailCount: details.length,
+    stockCountInDetail: byStock.size,
+    byDimension,
+    stocks: [...byStock.entries()].map(([code, info]) => ({
+      code,
+      dimensions: info.dimensions,
+      maxScore: info.maxScore,
+    })),
+  };
+}
+
+/**
  * 查看系统运行状态。
  *
  * 收集版本号、数据库大小、股票/股池数量、最新数据时间、
@@ -179,7 +380,7 @@ export async function getSystemStatus() {
   const stockCount = db.select({ count: sql<number>`count(*)` }).from(stock).get()?.count ?? 0;
 
   // 统计股池数量
-  const poolCount = db.select({ count: sql<number>`count(*)` }).from(pool).get()?.count ?? 0;
+  const poolCount = db.select({ count: sql<number>`count(*)` }).from(poolTable).get()?.count ?? 0;
 
   // 获取最新行情更新时间（从 daily_info 获取真实数据日期）
   const latestDaily = db

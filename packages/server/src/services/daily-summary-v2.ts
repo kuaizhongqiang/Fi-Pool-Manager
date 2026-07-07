@@ -15,6 +15,8 @@ import {
   dailySummaryDetail,
   dailySummary,
   stock,
+  pool as poolTable,
+  poolStock,
 } from '../db/schema.js';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import * as llmService from './llm.js';
@@ -420,14 +422,57 @@ ${historySection}
  * 4. 综合报告生成（含可选的 RAG 历史参考）
  * 5. 结果持久化到 daily_summary 表并向量化
  *
- * @param date - 目标日期（默认今天），格式 yyyy-MM-dd
+ * @param date    - 目标日期（默认今天），格式 yyyy-MM-dd
+ * @param verbose - 可选，true 则输出详细的诊断信息（各池覆盖率、分数分布等）
  * @returns 生成的综述结果
  */
 export async function generateDailySummaryV2(
   date?: string,
+  verbose?: boolean,
 ): Promise<DailySummaryV2Result> {
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
   const db = getDatabase();
+
+  // ── verbose: 各池数据完成度诊断 ──────────────────────────
+  if (verbose) {
+    try {
+      const pools = db
+        .select({ id: poolTable.id, name: poolTable.name })
+        .from(poolTable)
+        .all();
+
+      console.log(`\n[daily-summary-v2] ═══ 数据诊断 (${targetDate}) ═══`);
+      console.log(`[daily-summary-v2] 股池总数: ${pools.length}`);
+
+      for (const p of pools) {
+        const poolStocks = db
+          .select({ code: poolStock.stockCode })
+          .from(poolStock)
+          .where(eq(poolStock.poolId, p.id))
+          .all();
+
+        const codes = poolStocks.map((s) => s.code);
+        const withReport = codes.length > 0
+          ? db
+              .select({ count: sql<number>`count(*)` })
+              .from(finalReport)
+              .where(
+                and(
+                  eq(finalReport.date, targetDate),
+                  sql`${finalReport.code} IN (${sql.join(codes.map((c) => sql`${c}`), sql`,`)} )`,
+                ),
+              )
+              .get()?.count ?? 0
+          : 0;
+
+        console.log(
+          `[daily-summary-v2]   池 #${p.id} ${p.name}: ${withReport}/${poolStocks.length} 有 final_report`,
+        );
+      }
+    } catch (err) {
+      console.warn(`[daily-summary-v2] 数据诊断失败:`, (err as Error).message);
+    }
+  }
 
   // 1. 筛选异常股票
   const anomalies = selectAnomalyStocks(targetDate);
@@ -441,7 +486,39 @@ export async function generateDailySummaryV2(
     `[daily-summary-v2] 筛选结果: ${anomalies.length} 只异常股票（共 ${totalStocks} 只）`,
   );
 
+  // verbose: 显示分数分布
+  if (verbose && totalStocks > 0) {
+    const allScores = db
+      .select({ code: finalReport.code, score: finalReport.anomalyScore })
+      .from(finalReport)
+      .where(eq(finalReport.date, targetDate))
+      .orderBy(desc(finalReport.anomalyScore))
+      .all();
+    console.log(`[daily-summary-v2] 分数分布 (top-10):`);
+    for (const r of allScores.slice(0, 10)) {
+      const marker = r.score >= 2.5 ? ' ⚠' : '';
+      console.log(`[daily-summary-v2]   ${r.code}: ${r.score.toFixed(1)}${marker}`);
+    }
+    if (allScores.length > 10) {
+      console.log(`[daily-summary-v2]   ... 还有 ${allScores.length - 10} 只`);
+    }
+  }
+
   if (anomalies.length === 0) {
+    // verbose 时说明筛选原因
+    if (verbose) {
+      const allRows = db
+        .select({ code: finalReport.code, score: finalReport.anomalyScore })
+        .from(finalReport)
+        .where(eq(finalReport.date, targetDate))
+        .orderBy(desc(finalReport.anomalyScore))
+        .all();
+      console.log(`[daily-summary-v2] 无异常股票（阈值: ${ANOMALY_THRESHOLD}）`);
+      if (allRows.length > 0) {
+        const maxScore = allRows[0].score;
+        console.log(`[daily-summary-v2] 最高分: ${maxScore.toFixed(1)}，使用兜底 top-${MIN_ANOMALY_STOCKS}`);
+      }
+    }
     return {
       date: targetDate,
       anomalyStocks: 0,
