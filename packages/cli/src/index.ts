@@ -13,6 +13,12 @@ import { existsSync } from 'fs';
 import { resolve, sep } from 'path';
 import { homedir } from 'os';
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+
+// 单一版本号来源：从 package.json 读取
+const { version: cliVersion } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+) as { version: string };
 
 // ─── .env 自动查找 ───────────────────────────────────────────────
 //
@@ -139,7 +145,7 @@ const program = new Command();
 program
   .name('fi-pool')
   .description('A股股池管理服务端')
-  .version('0.3.0')
+  .version(cliVersion)
   .option('--config <path>', '指定 .env 配置文件路径（默认自动向上递归查找）');
 
 // ─── Pool Management ────────────────────────────────────────────

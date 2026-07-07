@@ -8,13 +8,37 @@
  * 公开 32 个工具，覆盖管理、查询、命令、执行、辅助五大类。
  */
 
-import { ensureDatabase } from 'fi-pool-server/db/migrate.js';
-import * as manager from 'fi-pool-server/tools/manager.js';
-import * as query from 'fi-pool-server/tools/query.js';
-import * as cmd from 'fi-pool-server/tools/command.js';
-import * as exec from 'fi-pool-server/tools/execute.js';
-import * as aux from 'fi-pool-server/tools/auxiliary.js';
-import { generateDailySummaryV2 } from 'fi-pool-server/services/daily-summary-v2.js';
+/**
+ * 注意：此处不使用静态 import 引用 fi-pool-server，
+ *      改为 init() 内动态 import() + 模块级变量，
+ *      避免模块求值期因 resolve 失败导致插件加载崩溃。
+ */
+import { readFileSync } from 'node:fs';
+
+/**
+ * import type 仅在编译期用于类型推导，编译后被完全擦除，
+ * 不会产生运行时 import/require，不会引发 MODULE_NOT_FOUND 崩溃。
+ */
+import type * as ManagerModule from 'fi-pool-server/tools/manager.js';
+import type * as QueryModule from 'fi-pool-server/tools/query.js';
+import type * as CmdModule from 'fi-pool-server/tools/command.js';
+import type * as ExecModule from 'fi-pool-server/tools/execute.js';
+import type * as AuxModule from 'fi-pool-server/tools/auxiliary.js';
+import type * as DailySummaryV2Module from 'fi-pool-server/services/daily-summary-v2.js';
+
+// ─── 模块级变量（init() 内动态注入，非空断言仅类型层面，运行时由 init() 填充）─
+let _ensureDatabase!: (...args: unknown[]) => unknown;
+let _manager!: typeof ManagerModule;
+let _query!: typeof QueryModule;
+let _cmd!: typeof CmdModule;
+let _exec!: typeof ExecModule;
+let _aux!: typeof AuxModule;
+let _generateDailySummaryV2!: typeof DailySummaryV2Module.generateDailySummaryV2;
+
+// 单一版本号来源：从 package.json 读取，npm version 自动更新
+const { version: pluginVersion } = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+) as { version: string };
 
 /** 从 JSON Schema 工具定义中提取 handler 的返回类型 */
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
@@ -71,7 +95,7 @@ const tools: ToolDefinition[] = [
       required: ['name'],
     },
     handler: async (args) => {
-      return manager.createPool(
+      return _manager.createPool(
         String(args.name ?? ''),
         args.desc ? String(args.desc) : undefined,
         args.stockCodes ? parseStringArray(args.stockCodes) : undefined,
@@ -90,7 +114,7 @@ const tools: ToolDefinition[] = [
       required: ['id'],
     },
     handler: async (args) => {
-      return manager.deletePool(parseIntArg(args.id));
+      return _manager.deletePool(parseIntArg(args.id));
     },
   },
 
@@ -107,7 +131,7 @@ const tools: ToolDefinition[] = [
       required: ['id'],
     },
     handler: async (args) => {
-      return manager.updatePool(
+      return _manager.updatePool(
         parseIntArg(args.id),
         args.name ? String(args.name) : undefined,
         args.desc ? String(args.desc) : undefined,
@@ -131,7 +155,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId', 'stockCodes'],
     },
     handler: async (args) => {
-      return manager.addStocks(parseIntArg(args.poolId), parseStringArray(args.stockCodes));
+      return _manager.addStocks(parseIntArg(args.poolId), parseStringArray(args.stockCodes));
     },
   },
 
@@ -151,7 +175,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId', 'stockCodes'],
     },
     handler: async (args) => {
-      return manager.removeStocks(parseIntArg(args.poolId), parseStringArray(args.stockCodes));
+      return _manager.removeStocks(parseIntArg(args.poolId), parseStringArray(args.stockCodes));
     },
   },
 
@@ -171,7 +195,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId', 'signal'],
     },
     handler: async (args) => {
-      return manager.setPoolSignal(parseIntArg(args.poolId), parseIntArg(args.signal));
+      return _manager.setPoolSignal(parseIntArg(args.poolId), parseIntArg(args.signal));
     },
   },
 
@@ -185,7 +209,7 @@ const tools: ToolDefinition[] = [
       properties: {},
     },
     handler: async () => {
-      return query.listPools();
+      return _query.listPools();
     },
   },
 
@@ -200,7 +224,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId'],
     },
     handler: async (args) => {
-      return query.getPoolStocks(parseIntArg(args.poolId));
+      return _query.getPoolStocks(parseIntArg(args.poolId));
     },
   },
 
@@ -215,7 +239,7 @@ const tools: ToolDefinition[] = [
       required: ['code'],
     },
     handler: async (args) => {
-      return query.getStockInfo(String(args.code ?? ''));
+      return _query.getStockInfo(String(args.code ?? ''));
     },
   },
 
@@ -232,7 +256,7 @@ const tools: ToolDefinition[] = [
       required: ['code'],
     },
     handler: async (args) => {
-      return query.getDailyInfo(
+      return _query.getDailyInfo(
         String(args.code ?? ''),
         args.startDate ? String(args.startDate) : undefined,
         args.endDate ? String(args.endDate) : undefined,
@@ -257,7 +281,7 @@ const tools: ToolDefinition[] = [
       required: ['code', 'date'],
     },
     handler: async (args) => {
-      return query.getAnalysisReport(
+      return _query.getAnalysisReport(
         String(args.code ?? ''),
         String(args.date ?? ''),
         (args.mode as 'overview' | 'full') || 'full',
@@ -282,7 +306,7 @@ const tools: ToolDefinition[] = [
       required: ['code', 'date'],
     },
     handler: async (args) => {
-      return query.getFinalReport(
+      return _query.getFinalReport(
         String(args.code ?? ''),
         String(args.date ?? ''),
         (args.mode as 'overview' | 'full') || 'full',
@@ -298,7 +322,7 @@ const tools: ToolDefinition[] = [
       properties: {},
     },
     handler: async () => {
-      return query.getSystemStatus();
+      return _query.getSystemStatus();
     },
   },
 
@@ -312,7 +336,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return query.checkDataCompleteness(args.date ? String(args.date) : undefined);
+      return _query.checkDataCompleteness(args.date ? String(args.date) : undefined);
     },
   },
 
@@ -328,7 +352,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId'],
     },
     handler: async (args) => {
-      return query.getPoolAnalysisStatus(
+      return _query.getPoolAnalysisStatus(
         parseIntArg(args.poolId),
         args.date ? String(args.date) : undefined,
       );
@@ -345,7 +369,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return query.getDailySummaryStatus(args.date ? String(args.date) : undefined);
+      return _query.getDailySummaryStatus(args.date ? String(args.date) : undefined);
     },
   },
 
@@ -368,7 +392,7 @@ const tools: ToolDefinition[] = [
       required: ['code', 'date'],
     },
     handler: async (args) => {
-      return cmd.outputAnalysisReport(
+      return _cmd.outputAnalysisReport(
         String(args.code ?? ''),
         String(args.date ?? ''),
         (args.mode as 'overview' | 'full') || 'overview',
@@ -393,7 +417,7 @@ const tools: ToolDefinition[] = [
       required: ['code', 'date'],
     },
     handler: async (args) => {
-      return cmd.outputFinalReport(
+      return _cmd.outputFinalReport(
         String(args.code ?? ''),
         String(args.date ?? ''),
         (args.mode as 'overview' | 'full') || 'overview',
@@ -417,7 +441,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId'],
     },
     handler: async (args) => {
-      return cmd.outputPoolReport(
+      return _cmd.outputPoolReport(
         parseIntArg(args.poolId),
         (args.mode as 'overview' | 'full') || 'overview',
       );
@@ -441,7 +465,7 @@ const tools: ToolDefinition[] = [
       required: ['query'],
     },
     handler: async (args) => {
-      return cmd.semanticSearch(
+      return _cmd.semanticSearch(
         String(args.query ?? ''),
         args.limit ? parseIntArg(args.limit) : 10,
         (args.type as 'analysis' | 'final' | 'all') || 'all',
@@ -465,7 +489,7 @@ const tools: ToolDefinition[] = [
       required: ['action'],
     },
     handler: async (args) => {
-      return cmd.sessionManage(
+      return _cmd.sessionManage(
         args.action as 'new' | 'switch' | 'list' | 'current',
         args.sessionId ? String(args.sessionId) : undefined,
       );
@@ -485,7 +509,7 @@ const tools: ToolDefinition[] = [
       required: ['code'],
     },
     handler: async (args) => {
-      return exec.runLocalAnalysis(String(args.code ?? ''));
+      return _exec.runLocalAnalysis(String(args.code ?? ''));
     },
   },
 
@@ -500,7 +524,7 @@ const tools: ToolDefinition[] = [
       required: ['code'],
     },
     handler: async (args) => {
-      return exec.runFullPipeline(String(args.code ?? ''));
+      return _exec.runFullPipeline(String(args.code ?? ''));
     },
   },
 
@@ -515,7 +539,7 @@ const tools: ToolDefinition[] = [
       required: ['poolId'],
     },
     handler: async (args) => {
-      return exec.runPoolAnalysis(parseIntArg(args.poolId));
+      return _exec.runPoolAnalysis(parseIntArg(args.poolId));
     },
   },
 
@@ -539,7 +563,7 @@ const tools: ToolDefinition[] = [
     handler: async (args) => {
       const raw = args.poolIds;
       const ids = Array.isArray(raw) ? raw.map((v: unknown) => parseIntArg(v)) : [parseIntArg(raw)];
-      return exec.runPoolFullPipeline(ids, args.force === true);
+      return _exec.runPoolFullPipeline(ids, args.force === true);
     },
   },
 
@@ -553,7 +577,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return exec.refreshData(args.code ? String(args.code) : undefined);
+      return _exec.refreshData(args.code ? String(args.code) : undefined);
     },
   },
 
@@ -569,7 +593,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return aux.help(args.command ? String(args.command) : undefined);
+      return _aux.help(args.command ? String(args.command) : undefined);
     },
   },
 
@@ -584,7 +608,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return generateDailySummaryV2(
+      return _generateDailySummaryV2(
         args.date ? String(args.date) : undefined,
         args.verbose === true,
       );
@@ -601,7 +625,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return aux.generateDailySummaryReport(args.date ? String(args.date) : undefined);
+      return _aux.generateDailySummaryReport(args.date ? String(args.date) : undefined);
     },
   },
 
@@ -620,7 +644,7 @@ const tools: ToolDefinition[] = [
       required: ['type'],
     },
     handler: async (args) => {
-      return aux.listResources(args.type as 'pools' | 'stocks' | 'tools');
+      return _aux.listResources(args.type as 'pools' | 'stocks' | 'tools');
     },
   },
 
@@ -632,7 +656,7 @@ const tools: ToolDefinition[] = [
       properties: {},
     },
     handler: async () => {
-      return aux.showState();
+      return _aux.showState();
     },
   },
 
@@ -644,7 +668,7 @@ const tools: ToolDefinition[] = [
       properties: {},
     },
     handler: async () => {
-      return aux.showVersion();
+      return _aux.showVersion();
     },
   },
 
@@ -658,7 +682,7 @@ const tools: ToolDefinition[] = [
       },
     },
     handler: async (args) => {
-      return aux.getConfig(args.key ? String(args.key) : undefined);
+      return _aux.getConfig(args.key ? String(args.key) : undefined);
     },
   },
 
@@ -674,7 +698,7 @@ const tools: ToolDefinition[] = [
       required: ['key', 'value'],
     },
     handler: async (args) => {
-      return aux.setConfig(String(args.key ?? ''), String(args.value ?? ''));
+      return _aux.setConfig(String(args.key ?? ''), String(args.value ?? ''));
     },
   },
 ];
@@ -683,7 +707,7 @@ const tools: ToolDefinition[] = [
 
 export default {
   name: 'fi-pool-manager',
-  version: '0.4.1',
+  version: pluginVersion,
   description: 'A股股池管理 — 管理股票池、获取行情、技术分析、LLM 分析报告',
 
   /** MCP 工具定义列表 */
@@ -692,7 +716,23 @@ export default {
   /** 初始化钩子 */
   async init() {
     try {
-      ensureDatabase();
+      const [migrate, mgr, qry, c, exe, au, dsv2] = await Promise.all([
+        import('fi-pool-server/db/migrate.js'),
+        import('fi-pool-server/tools/manager.js'),
+        import('fi-pool-server/tools/query.js'),
+        import('fi-pool-server/tools/command.js'),
+        import('fi-pool-server/tools/execute.js'),
+        import('fi-pool-server/tools/auxiliary.js'),
+        import('fi-pool-server/services/daily-summary-v2.js'),
+      ]);
+      _ensureDatabase = migrate.ensureDatabase;
+      _manager = mgr;
+      _query = qry;
+      _cmd = c;
+      _exec = exe;
+      _aux = au;
+      _generateDailySummaryV2 = dsv2.generateDailySummaryV2;
+      _ensureDatabase();
       console.log('[fi-pool] 插件初始化完成');
     } catch (err) {
       console.error('[fi-pool] 插件初始化失败:', (err as Error).message);
