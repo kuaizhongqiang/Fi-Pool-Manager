@@ -15,10 +15,16 @@ import { homedir } from 'os';
 import { Command } from 'commander';
 import { readFileSync } from 'node:fs';
 
-// 单一版本号来源：从 package.json 读取
-const { version: cliVersion } = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
-) as { version: string };
+// 单一版本号来源：从 package.json 读取（try/catch 防止模块求值期崩溃）
+let cliVersion = '0.0.0';
+try {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+  ) as { version: string };
+  cliVersion = pkg.version;
+} catch {
+  cliVersion = '0.0.0';
+}
 
 // ─── .env 自动查找 ───────────────────────────────────────────────
 //

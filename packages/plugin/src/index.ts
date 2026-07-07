@@ -35,10 +35,16 @@ let _exec!: typeof ExecModule;
 let _aux!: typeof AuxModule;
 let _generateDailySummaryV2!: typeof DailySummaryV2Module.generateDailySummaryV2;
 
-// 单一版本号来源：从 package.json 读取，npm version 自动更新
-const { version: pluginVersion } = JSON.parse(
-  readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
-) as { version: string };
+// 单一版本号来源：从 package.json 读取（try/catch 防止模块求值期崩溃）
+let pluginVersion = '0.0.0';
+try {
+  const pkg = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf-8'),
+  ) as { version: string };
+  pluginVersion = pkg.version;
+} catch {
+  pluginVersion = '0.0.0'; // fallback，init() 中会尝试重新读取
+}
 
 /** 从 JSON Schema 工具定义中提取 handler 的返回类型 */
 type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>;
