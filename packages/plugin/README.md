@@ -1,22 +1,47 @@
 # @fi-pool/plugin
 
-Fi-Pool-Manager OpenClaw 插件。
+Fi-Pool-Manager OpenClaw plugin. Exposes the full server capability as 36 MCP tools for AI agents (Claude, Cursor, etc.) via the OpenClaw MCP protocol.
 
-将核心服务能力打包为 OpenClaw 插件，通过 MCP 协议将工具暴露给 AI 代理（Claude、Cursor 等）。
+## Tools
 
-## 能力
+### Management (6)
+- `create_pool`, `delete_pool`, `update_pool`
+- `add_stocks`, `remove_stocks`, `set_pool_signal`
 
-此插件将与 `openclaw-mcp-server` 配合，向 AI 代理提供以下工具：
+### Query (12)
+- `list_pools`, `get_pool_stocks`, `get_stock_info`
+- `get_daily_info`, `get_analysis_report`, `get_final_report`
+- `get_system_status`, `check_data_completeness`
+- `get_pool_analysis_status`, `get_daily_summary_status`
+- `list_pipeline_runs`, `get_pipeline_run_detail`
 
-- 股池管理（创建、删除、修改、增删股票）
-- 股票查询（信息、行情、报告）
-- 分析报告输出（full/overview）
-- 语义搜索
-- 执行分析流水线（支持断点重开、`--force` 强制重跑、`--missing` 补跑模式）
-- 运行历史查询（pipeline-log）
+### Command (5)
+- `output_analysis_report`, `output_final_report`, `output_pool_report`
+- `semantic_search`, `session_manage`
 
-## 开发参考
+### Execute (5)
+- `run_local_analysis`, `run_full_pipeline`
+- `run_pool_analysis`, `run_pool_full_pipeline` (supports `force` and `missing`)
+- `refresh_data`
 
-- [OpenClaw 插件清单规范](https://docs.openclaw.ai/zh-CN/plugins/manifest)
-- [构建插件](https://docs.openclaw.ai/zh-CN/plugins/building-plugins)
-- [工具插件](https://docs.openclaw.ai/plugins/tool-plugins)
+### Auxiliary (8)
+- `help`, `list_resources`, `show_state`, `show_version`
+- `get_config`, `set_config`
+- `generate_daily_summary_v2` (recommended)
+- `generate_daily_summary` (deprecated v1)
+
+## Development
+
+```bash
+# Build
+npm run build
+
+# The plugin is private — not published to npm.
+# Download the release zip from GitHub Releases.
+```
+
+## References
+
+- [OpenClaw Manifest Spec](https://docs.openclaw.ai/en/plugins/manifest)
+- [Building Plugins](https://docs.openclaw.ai/en/plugins/building-plugins)
+- [Tool Plugins](https://docs.openclaw.ai/en/plugins/tool-plugins)
