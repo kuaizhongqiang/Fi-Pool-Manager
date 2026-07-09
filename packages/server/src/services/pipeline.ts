@@ -1203,6 +1203,11 @@ export class Pipeline {
    * 依次执行数据获取、客观报告、
    * 舆情获取、多角色分析和最终报告。
    *
+   * 支持断点重开（Checkpoint/Resume）：
+   * - Stage 1 获取最新交易日日期后，检查 final_report 是否已存在
+   * - 已有则跳过 Stages 2-5 直接返回
+   * - 避免 `--force` 导致的无效 LLM 重复调用
+   *
    * @returns 流水线运行结果（日期、流水线 ID、最终报告 ID）
    *
    * @example
@@ -1219,6 +1224,22 @@ export class Pipeline {
     const stage1 = await this.stage1FetchData();
     const date = stage1.date;
     console.log(`[pipeline] Stage 1 完成: date=${date}, records=${stage1.records}`);
+
+    // ── 断点重开（真实日期）：检查该股该日期是否已有 final_report ──
+    // 此处 date 是 Stage 1 返回的最新交易日，比外层 runPoolFullPipeline 用
+    // getTodayDate() 做预检更精确（解决周末/假期与交易日不一致的问题）
+    if (!this.force) {
+      const db = getDatabase();
+      const existing = db
+        .select({ id: finalReport.id, date: finalReport.date })
+        .from(finalReport)
+        .where(and(eq(finalReport.code, code), eq(finalReport.date, date)))
+        .get();
+      if (existing) {
+        console.log(`[pipeline] 最终报告已存在 (${code} ${date})，跳过 Stages 2-5`);
+        return { date, pipelineId: this.pipelineId, finalReportId: existing.id };
+      }
+    }
 
     // Stage 2: 客观报告
     if (this.abortSignal?.aborted) throw new Error(`流水线 ${this.pipelineId} 已取消`);

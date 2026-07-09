@@ -188,10 +188,21 @@ export async function listAllPools() {
 /**
  * 对指定股池中所有股票运行完整流水线（支持多池串行执行）。
  *
- * 支持断点重开（Checkpoint/Resume）：
- * - 非 --force 模式下，每只股票执行前检查该日期是否已有 final_report
- * - 已有则跳过（视为已完成），无则执行
+ * 支持断点重开（Checkpoint/Resume）双层策略：
+ *
+ * 第 1 层（预检，execute.ts）：
+ * - 在 runPoolFullPipeline 中用 getTodayDate() 做快速预检
+ * - 用今天日期匹配 final_report，匹配则跳过（最常用的场景）
+ *
+ * 第 2 层（精检，pipeline.ts）：
+ * - Pipeline.runFull() 内 Stage 1 获取到真实最新交易日后
+ * - 用真实日期再次检查 final_report
+ * - 解决周末/假期中 getTodayDate() 与交易日不一致的问题
+ *
+ * 两层结合确保：
+ * - 非 --force 模式下，已完成的股票不会触发 LLM 调用
  * - 中断后重新执行，已完成的股票自动跳过
+ * - force=true 强制全量重跑（跳过所有缓存检查）
  *
  * @param poolIds - 股池 ID 或 ID 数组
  * @param force   - 可选，true 则强制重新执行（跳过缓存检查），默认 false
