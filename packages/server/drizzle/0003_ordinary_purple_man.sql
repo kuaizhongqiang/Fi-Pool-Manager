@@ -12,9 +12,9 @@ CREATE TABLE `pipeline_run` (
 	`duration_seconds` real,
 	`avg_stock_duration` real,
 	`args` text DEFAULT '' NOT NULL,
-	`started_at` text DEFAULT 'datetime('now')' NOT NULL,
+	`started_at` text DEFAULT (datetime('now')) NOT NULL,
 	`finished_at` text,
-	`created_at` text DEFAULT 'datetime('now')' NOT NULL
+	`created_at` text DEFAULT (datetime('now')) NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `pipeline_run_run_id_unique` ON `pipeline_run` (`run_id`);--> statement-breakpoint

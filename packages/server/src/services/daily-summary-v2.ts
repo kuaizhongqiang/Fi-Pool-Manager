@@ -238,7 +238,7 @@ async function analyzeAnomalyStock(
   // 2. 解析结果
   const dimensions = parseMultiDimResponse(llmResponse, stock.code, date);
 
-  // 3. 写入 daily_summary_detail 表
+  // 3. 写入 daily_summary_detail 表（UPSERT，避免重跑时 UNIQUE 冲突）
   const db = getDatabase();
   for (const dim of dimensions) {
     db.insert(dailySummaryDetail)
@@ -249,6 +249,14 @@ async function analyzeAnomalyStock(
         anomalyDesc: dim.anomalyDesc,
         anomalyScore: dim.anomalyScore,
         keyFindings: dim.keyFindings,
+      })
+      .onConflictDoUpdate({
+        target: [dailySummaryDetail.stockCode, dailySummaryDetail.date, dailySummaryDetail.dimension],
+        set: {
+          anomalyDesc: dim.anomalyDesc,
+          anomalyScore: dim.anomalyScore,
+          keyFindings: dim.keyFindings,
+        },
       })
       .run();
   }

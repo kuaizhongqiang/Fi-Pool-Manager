@@ -25,6 +25,7 @@
  */
 
 import { sqliteTable, text, integer, real, blob, uniqueIndex, index, AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 // ─── Pool 股池 ───────────────────────────────────────────────
 
@@ -223,9 +224,9 @@ export const pipelineRun = sqliteTable('pipeline_run', {
   durationSeconds: real('duration_seconds'), // 总耗时（秒），完成时写入
   avgStockDuration: real('avg_stock_duration'), // 平均每只耗时（秒）
   args: text('args').notNull().default(''), // 启动参数快照
-  startedAt: text('started_at').notNull().default("datetime('now')"),
+  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
   finishedAt: text('finished_at'),
-  createdAt: text('created_at').notNull().default("datetime('now')"),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 }, (table) => ({
   dateIdx: index('idx_pr_date').on(table.date),
   statusIdx: index('idx_pr_status').on(table.status),
