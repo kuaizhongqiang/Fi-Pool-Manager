@@ -10,6 +10,7 @@
  */
 
 import { getDatabase } from '../db/index.js';
+import { getTodayDate } from '../utils/date.js';
 import {
   finalReport,
   dailySummaryDetail,
@@ -430,7 +431,7 @@ export async function generateDailySummaryV2(
   date?: string,
   verbose?: boolean,
 ): Promise<DailySummaryV2Result> {
-  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+  const targetDate = date ?? getTodayDate();
   const db = getDatabase();
 
   // ── verbose: 各池数据完成度诊断 ──────────────────────────

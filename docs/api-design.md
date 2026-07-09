@@ -210,6 +210,100 @@
 
 ---
 
+### checkDataCompleteness
+
+检查某日各池数据完成度和异常分数分布。
+
+```
+入参：
+  date?: string    // 目标日期 yyyy-MM-dd（默认今天）
+
+返回：{
+  date: string
+  totalStocksInPools: number
+  totalFinalReports: number
+  scoreDistribution: { min: number, max: number, avg: number, aboveThreshold: number }
+  pools: { poolId: number, poolName: string, totalStocks: number, withReport: number, ... }[]
+}
+```
+
+### getPoolAnalysisStatus
+
+查看指定股池的分析进度明细。
+
+```
+入参：
+  poolId: number
+  date?: string    // 目标日期 yyyy-MM-dd（默认今天）
+
+返回：{
+  poolId: number
+  poolName: string
+  date: string
+  totalStocks: number
+  completedStocks: number
+  pendingStocks: number
+  stocks: { code: string, name: string, hasReport: boolean, anomalyScore?: number }[]
+}
+```
+
+### getDailySummaryStatus
+
+查看某日 daily-summary 的执行状态。
+
+```
+入参：
+  date?: string    // 目标日期 yyyy-MM-dd（默认今天）
+
+返回：{
+  date: string
+  hasSummary: boolean
+  summaryRecord?: { anomalyCount, totalStocks, modelUsed, overviewLength, createdAt }
+  detailCount: number
+  stockCountInDetail: number
+  byDimension: Record<string, number>
+}
+```
+
+### listPipelineRuns
+
+查询流水线运行记录列表（#142）。
+
+```
+入参：
+  date?: string          // 可选日期，不指定则返回最近 20 条
+
+返回：{
+  id: number
+  runId: string
+  date: string
+  mode: 'full' | 'force' | 'missing'
+  status: 'running' | 'completed' | 'cancelled' | 'crashed'
+  totalStocks: number
+  completedStocks: number
+  failedStocks: number
+  skippedStocks: number
+  durationSeconds?: number
+  avgStockDuration?: number
+  args: string
+  startedAt: string
+  finishedAt?: string
+}[]
+```
+
+### getPipelineRunDetail
+
+查询指定 runId 的流水线运行详细记录（#142）。
+
+```
+入参：
+  runId: string    // 流水线运行 ID（如 pool-run-xxxx）
+
+返回：同上（单条）或 null
+```
+
+---
+
 ## 命令类（Command）
 
 > 返回值特征：复合结构，包含完整或摘要的内容。
@@ -367,6 +461,16 @@
 自动记录运行历史到 pipeline_run 表（#142），可通过 pipeline-log 命令查看。
 自动触发每日综述 v2（#76），在 finally 块中确保无论成功/崩溃都执行。
 
+### listAllPools
+
+列出所有股池（供 --all / --missing 模式使用）。
+
+```
+入参：（无）
+
+返回：{ id: number, name: string, desc: string, stockCount: number, poolSignal: number }[]
+```
+
 ### refreshData
 
 触发获取最新日行情数据。
@@ -471,3 +575,22 @@
 ```
 
 > **自动触发**：在 `runPoolFullPipeline` 执行完成后自动调用。
+
+### generateDailySummaryV2（推荐，替代 v1）
+
+生成每日综合股池综述 v2——异常值驱动 + 多维分析 + RAG。
+
+```
+入参：
+  date?: string    // 目标日期 yyyy-MM-dd（默认今天）
+  verbose?: boolean // true 则输出诊断信息（各池覆盖率、分数分布等）
+
+返回：{
+  date: string
+  overview: string
+  dimensions: { dimension: string, stocks: { code, name, desc, score }[] }[]
+  anomalyStats: { total, aboveThreshold, byDimension }
+}
+```
+
+> v1（`generateDailySummary`）已 DEPRECATED，因 MAX_INPUT_TOKENS=3000 限制始终 400 错误，请使用 v2 替代。

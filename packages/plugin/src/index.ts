@@ -5,7 +5,7 @@
  * 将 fi-pool-server 的能力暴露为 OpenClaw 插件，
  * 通过 MCP 协议供 Claude、Cursor 等 AI 代理调用。
  *
- * 公开 32 个工具，覆盖管理、查询、命令、执行、辅助五大类。
+ * 公开 34 个工具，覆盖管理、查询、命令、执行、辅助五大类。
  */
 
 /**
@@ -376,6 +376,35 @@ const tools: ToolDefinition[] = [
     },
     handler: async (args) => {
       return _query.getDailySummaryStatus(args.date ? String(args.date) : undefined);
+    },
+  },
+
+  {
+    name: 'list_pipeline_runs',
+    description: '查询流水线运行记录列表——可按日期过滤或查看最近 20 条',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { type: 'string', description: '可选日期 yyyy-MM-dd（默认返回最近 20 条）' },
+      },
+    },
+    handler: async (args) => {
+      return _query.listPipelineRuns(args.date ? String(args.date) : undefined);
+    },
+  },
+
+  {
+    name: 'get_pipeline_run_detail',
+    description: '查询指定 runId 的流水线运行详细记录——含进度、耗时、参数、状态',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        runId: { type: 'string', description: '流水线运行 ID（如 pool-run-xxxx）' },
+      },
+      required: ['runId'],
+    },
+    handler: async (args) => {
+      return _query.getPipelineRunDetail(String(args.runId ?? ''));
     },
   },
 

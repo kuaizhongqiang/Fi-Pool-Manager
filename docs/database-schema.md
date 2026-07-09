@@ -346,4 +346,7 @@ config（独立表，键值存储）
 | sentiment_report | code, date, code+date | 舆情查询 |
 | analysis_roler | code+date, role | 发言记录查询 |
 | final_report | code, date, code+date | 报告查询 |
+| daily_summary_detail | date, stock+date, dimension, stock+date+dimension | 逐维度分析查询 |
+| daily_summary | date | 每日综述查询 |
+| pipeline_run | date, status, run_id | 运行历史查询 |
 | vec_embedding | type, code, type+code+date | 向量检索过滤 |
