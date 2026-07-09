@@ -32,6 +32,7 @@
 | `RATE_LIMIT` | 外部接口频率限制 |
 | `LLM_ERROR` | LLM 调用失败 |
 | `DB_ERROR` | 数据库错误 |
+| `LOCK_ERROR` | 流水线锁冲突，已有实例在运行 |
 | `INTERNAL` | 内部错误 |
 
 ---
@@ -574,7 +575,7 @@
   }
 ```
 
-> **自动触发**：在 `runPoolFullPipeline` 执行完成后自动调用。
+> ⚠ 已废弃。自动触发已迁移至 `generateDailySummaryV2`（参见下方）。
 
 ### generateDailySummaryV2（推荐，替代 v1）
 
