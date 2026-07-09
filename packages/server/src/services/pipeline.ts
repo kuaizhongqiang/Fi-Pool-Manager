@@ -783,6 +783,18 @@ export class Pipeline {
       }
     }
 
+    // DashScope 未配置时跳过 Stage 3（不写占位符到 DB，避免阻碍后续配置后的真正执行）
+    if (!sentimentService.isDashScopeConfigured()) {
+      console.warn(`[pipeline] ⚠ DashScope 未配置，Stage 3 舆情搜索跳过 (${code})`);
+      console.warn(`  配置 DASHSCOPE_API_KEY 后重新运行即可自动启用。`);
+      // 返回空结果但不写入数据库，下次重跑仍会尝试
+      return {
+        id: 0,
+        report: '',
+        sources: [],
+      };
+    }
+
     // 获取股票名称
     const stockInfo = await stockService.getStockByCode(code);
     const name = stockInfo?.name || code;

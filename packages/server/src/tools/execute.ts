@@ -13,22 +13,104 @@ import * as poolService from '../services/pool.js';
 import { generateDailySummaryV2, printDailySummaryV2 } from '../services/daily-summary-v2.js';
 import { getDatabase } from '../db/index.js';
 import { finalReport } from '../db/schema.js';
-import { eq, desc } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
+import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+// ─── PID 文件锁（阻止并行 pipeline 实例）───────────────────────────
 
 /**
- * 检查某股票是否有已完成的 final_report。
- * 用于断点重开：取最新的 final_report 记录。
+ * 流水线锁文件路径。
+ * 可通过 FI_POOL_LOCK_PATH 环境变量覆盖，默认在数据目录下。
+ */
+const LOCK_PATH = process.env.FI_POOL_LOCK_PATH || resolve(process.cwd(), 'data', '.pipeline.lock');
+
+/**
+ * 尝试获取流水线锁。
+ *
+ * 若锁文件存在且对应进程仍在运行，返回 false（拒绝启动）；
+ * 若锁文件过期（进程不存在），清理后重新加锁。
+ *
+ * @returns true 表示成功加锁，false 表示已有实例在运行
+ */
+function acquirePipelineLock(): boolean {
+  if (existsSync(LOCK_PATH)) {
+    try {
+      const content = readFileSync(LOCK_PATH, 'utf-8').trim();
+      const pid = parseInt(content, 10);
+      if (!isNaN(pid) && pid > 0) {
+        try {
+          // 检查进程是否存在（不发送信号，仅探活）
+          process.kill(pid, 0);
+          console.error(`[lock] 错误：已有流水线在运行 (PID: ${pid})，请等待完成或手动终止`);
+          console.error(`[lock] 锁文件: ${LOCK_PATH}`);
+          return false;
+        } catch {
+          // 进程不存在 → 过期锁，清理
+          console.warn(`[lock] 清理过期锁 (PID: ${pid} 不存在)`);
+        }
+      }
+    } catch {
+      // 锁文件损坏，忽略并覆写
+      console.warn('[lock] 锁文件损坏，将重新创建');
+    }
+  }
+
+  // 写入自己的 PID
+  try {
+    writeFileSync(LOCK_PATH, String(process.pid), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error(`[lock] 无法写入锁文件: ${LOCK_PATH}`, (err as Error).message);
+    return true; // 锁失败不应阻止流水线运行（降级）
+  }
+}
+
+/**
+ * 释放流水线锁。
+ */
+function releasePipelineLock(): void {
+  try {
+    if (existsSync(LOCK_PATH)) {
+      const content = readFileSync(LOCK_PATH, 'utf-8').trim();
+      if (content === String(process.pid)) {
+        unlinkSync(LOCK_PATH);
+      }
+      // 如果 PID 不匹配（其他进程覆写了），不删除
+    }
+  } catch {
+    // 清理失败忽略
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * 获取今日日期字符串（北京时间，yyyy-MM-dd 格式）。
+ */
+function getTodayDate(): string {
+  const now = new Date();
+  const local = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  const y = local.getUTCFullYear();
+  const m = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(local.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * 检查某股票在指定日期是否有已完成的 final_report。
+ * 用于断点重开：按目标日期精确匹配。
  *
  * @param code - 股票代码
- * @returns 最新 final_report 的 date 和 id，或 null
+ * @param date - 目标日期 yyyy-MM-dd
+ * @returns 匹配的 final_report 的 date 和 id，或 null
  */
-function checkExistingFinalReport(code: string): { date: string; id: number } | null {
+function checkExistingFinalReport(code: string, date: string): { date: string; id: number } | null {
   const db = getDatabase();
   const row = db
     .select({ id: finalReport.id, date: finalReport.date })
     .from(finalReport)
-    .where(eq(finalReport.code, code))
-    .orderBy(desc(finalReport.date))
+    .where(and(eq(finalReport.code, code), eq(finalReport.date, date)))
     .limit(1)
     .get();
   return row ?? null;
@@ -124,6 +206,14 @@ export async function listAllPools() {
  * await runPoolFullPipeline([1, 2], true);
  */
 export async function runPoolFullPipeline(poolIds: number | number[], force?: boolean) {
+  // ── PID 文件锁：阻止并行实例 ──
+  if (!acquirePipelineLock()) {
+    return {
+      success: false as const,
+      error: { code: 'LOCK_ERROR', message: '已有流水线在运行，请等待完成或手动终止' },
+    };
+  }
+
   try {
     const ids = Array.isArray(poolIds) ? poolIds : [poolIds];
     let completed = 0;
@@ -137,13 +227,16 @@ export async function runPoolFullPipeline(poolIds: number | number[], force?: bo
       }
       console.log(`[runPoolFullPipeline] 开始股池 ${pid} (${stocks.length} 只股票)`);
 
+      // 断点重开的目标日期：今日（北京时间），流水线每天针对最新交易日运行
+      const targetDate = getTodayDate();
+
       for (let i = 0; i < stocks.length; i++) {
         const s = stocks[i];
         const progress = `[${i + 1}/${stocks.length}]`;
 
-        // 断点重开：检查该股该日期是否已有 final_report（非 force 模式）
+        // 断点重开：检查该股目标日期是否已有 final_report（非 force 模式）
         if (!force) {
-          const existing = checkExistingFinalReport(s.code);
+          const existing = checkExistingFinalReport(s.code, targetDate);
           if (existing) {
             console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 已有 final_report (date=${existing.date}), 跳过`);
             skipped++;
@@ -175,6 +268,8 @@ export async function runPoolFullPipeline(poolIds: number | number[], force?: bo
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false as const, error: { code: 'DB_ERROR', message } };
+  } finally {
+    releasePipelineLock();
   }
 }
 

@@ -54,6 +54,14 @@ export async function fetchSentiment(
 ): Promise<{ report: string; sources: string[] }> {
   const apiKey = process.env.DASHSCOPE_API_KEY;
   if (!apiKey || apiKey.trim() === '') {
+    console.warn(
+      '[sentiment] ⚠ DASHSCOPE_API_KEY 未配置，舆情搜索已跳过。\n' +
+      '  如需启用舆情搜索，请在 .env 中配置：\n' +
+      '    DASHSCOPE_API_KEY=sk-...\n' +
+      '    DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1\n' +
+      '    DASHSCOPE_MODEL=qwen3.5-flash\n' +
+      '  也可通过 fi-pool config set DASHSCOPE_API_KEY=sk-... 动态设置。'
+    );
     return {
       report: '舆情搜索未配置（DASHSCOPE_API_KEY 未设置）',
       sources: [],
@@ -107,10 +115,26 @@ export async function fetchSentiment(
     return { report: content, sources };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[sentiment] 舆情搜索失败 (${code} ${name}): ${message}`);
+    const statusCode = (err as Record<string, unknown>).statusCode ?? (err as Record<string, unknown>).status ?? '';
+    const statusInfo = statusCode ? ` (HTTP ${statusCode})` : '';
+    console.warn(`[sentiment] 舆情搜索失败 (${code} ${name}): ${message}${statusInfo}`);
+    console.warn(`[sentiment] 请求信息: baseUrl=${baseUrl}, model=${model}`);
     return {
-      report: `舆情搜索失败: ${message}`,
+      report: `舆情搜索失败: ${message}${statusInfo}`,
       sources: [],
     };
   }
+}
+
+/**
+ * 检查 DashScope 是否已配置。
+ * 在 pipeline 启动时调用，给出显式诊断。
+ * 注意：setConfig() 写入 DB 时会同步到 process.env，
+ * 因此只需检查 process.env 即可覆盖 DB 配置的生效场景。
+ *
+ * @returns true 表示已配置，false 表示未配置
+ */
+export function isDashScopeConfigured(): boolean {
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  return !!(apiKey && apiKey.trim() !== '');
 }

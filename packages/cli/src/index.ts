@@ -29,45 +29,78 @@ try {
 // ─── .env 自动查找 ───────────────────────────────────────────────
 //
 // 全局安装后，CLI 可能在任意目录运行，需要向上递归查找 .env。
-// 查找顺序：CWD → 父目录 → 祖父目录 → ... → ~/.fi-pool/.env
-function resolveEnvFile(): string | undefined {
-  // 1. 从 CWD 向上递归查找 .env
+// 查找顺序：CWD → 父目录 → 祖父目录 → ...（合并所有找到的 .env，后加载的优先级高）
+// 最后加载 ~/.fi-pool/.env 和 /etc/fi-pool/.env 作为系统级默认值。
+//
+// 合并多个 .env 解决用户分散配置的问题（如 workspace/.env 配 LLM,
+// Fi-Pool-Manager/.env 配 DASHSCOPE_*）。
+function resolveEnvFiles(): string[] {
+  const found: string[] = [];
+
+  // 1. 从 CWD 向上递归查找所有 .env
   let dir = process.cwd();
   const root = resolve(dir.split(sep)[0] || '/'); // 文件系统根 (win: "C:\\", posix: "/")
+  const upwardFiles: string[] = [];
   while (true) {
     const candidate = resolve(dir, '.env');
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) upwardFiles.push(candidate);
     const parent = resolve(dir, '..');
     if (parent === dir || parent === root || parent.length >= dir.length) break;
     dir = parent;
   }
+  // 上层目录的 .env 先加载，CWD 的 .env 后加载（覆盖上层）
+  found.push(...upwardFiles.reverse());
 
   // 2. 备用：~/.fi-pool/.env
   const homeEnv = resolve(homedir(), '.fi-pool', '.env');
-  if (existsSync(homeEnv)) return homeEnv;
+  if (existsSync(homeEnv)) found.push(homeEnv);
 
   // 3. 备用：/etc/fi-pool/.env
   const etcEnv = '/etc/fi-pool/.env';
-  if (existsSync(etcEnv)) return etcEnv;
+  if (existsSync(etcEnv)) found.push(etcEnv);
 
-  return undefined; // 没找到就靠默认值
+  return found;
 }
 
-const envPath = resolveEnvFile();
-if (envPath) {
-  dotenv.config({ path: envPath });
+// 加载所有找到的 .env（后加载的覆盖先加载的）
+const envFiles = resolveEnvFiles();
+if (envFiles.length > 0) {
+  for (const f of envFiles) {
+    dotenv.config({ path: f });
+  }
 } else {
-  // 兜底：尝试加载 CWD 的 .env（原来的行为）
+  // 兜底：尝试加载 CWD 的 .env
   dotenv.config();
 }
 
-// 支持 --config 显式指定配置文件路径
+// 支持 --config 显式指定配置文件路径（最高优先级）
 const configIndex = process.argv.indexOf('--config');
 if (configIndex !== -1 && configIndex + 1 < process.argv.length) {
   const explicitPath = resolve(process.cwd(), process.argv[configIndex + 1]);
   if (existsSync(explicitPath)) {
     dotenv.config({ path: explicitPath, override: true });
+    envFiles.push(explicitPath);
   }
+}
+
+// 启动诊断：打印 .env 加载情况和关键配置状态
+const DASHSCOPE_KEY = process.env.DASHSCOPE_API_KEY;
+if (envFiles.length > 0) {
+  console.error(`[fi-pool] 已加载 ${envFiles.length} 个 .env 文件:`);
+  for (const f of envFiles) {
+    console.error(`  - ${f}`);
+  }
+} else {
+  console.error('[fi-pool] 未找到 .env 文件，将使用默认配置');
+}
+if (DASHSCOPE_KEY && DASHSCOPE_KEY.trim()) {
+  console.error(`[fi-pool] DASHSCOPE_API_KEY 已配置 (${DASHSCOPE_KEY.slice(0, 4)}...${DASHSCOPE_KEY.slice(-4)})`);
+} else {
+  console.error('[fi-pool] ⚠ DASHSCOPE_API_KEY 未配置，Stage 3 舆情搜索将跳过');
+  console.error('  如需舆情搜索，请在 .env 中添加:');
+  console.error('    DASHSCOPE_API_KEY=sk-...');
+  console.error('    DASHSCOPE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1');
+  console.error('    DASHSCOPE_MODEL=qwen3.5-flash');
 }
 // ─────────────────────────────────────────────────────────────────
 
@@ -531,7 +564,7 @@ program
 program
   .command('run-pool-pipeline')
   .description('对股池所有股票运行完整流水线（支持多个池 ID 串行执行）')
-  .argument('<poolIds...>', '股池 ID（可传多个，如 1 2 3；或用 --all）')
+  .argument('[poolIds...]', '股池 ID（可传多个，如 1 2 3；或用 --all）')
   .option('--all', '对所有股池串行执行')
   .option('--force', '强制重新执行（跳过缓存检查）')
   .action(async (poolIds: string[], options: { all?: boolean; force?: boolean }) => {
@@ -542,9 +575,9 @@ program
         ids = pools.map(p => p.id);
         console.log(`[run-pool-pipeline] 对所有 ${ids.length} 个股池串行执行`);
       } else {
-        ids = poolIds.map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+        ids = (poolIds || []).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
         if (ids.length === 0) {
-          printError('请指定至少一个有效的股池 ID');
+          printError('请指定至少一个有效的股池 ID（或使用 --all）');
           return;
         }
       }
