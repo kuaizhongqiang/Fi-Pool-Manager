@@ -31,6 +31,17 @@ fi-pool check-data                 # 确认数据已覆盖
 # 直接重新执行即可——已完成的自动跳过
 fi-pool run-pool-pipeline --all
 
+# 场景：只想跑今天没跑完的（补跑模式）
+# --missing 自动识别未完成的股票，只执行这些
+fi-pool run-pool-pipeline --missing
+# 输出示例：
+# [runPoolFullPipeline] 补跑模式: 股池 1 (26 只中已完成 13 只，待执行 13 只)
+# [runPoolFullPipeline] [1/13] 000XXX 完成 ✓
+#   ⏱ 平均 45s/只，预计剩余 9分0秒（~15:23 完成）
+
+# 补跑指定池中未完成的
+fi-pool run-pool-pipeline --missing 2 3
+
 # 如果中途新增了股票，也会自动增量执行
 ```
 
@@ -70,9 +81,12 @@ fi-pool run-pool-pipeline <poolId>
 |------|------|----------|
 | `run-pool-pipeline <ids...>` | 池流水线（支持断点重开） | 全量/增量分析 |
 | `run-pool-pipeline --all` | 所有池串行执行 | 快速一次性跑完 |
+| `run-pool-pipeline --missing` | **补跑模式**：仅执行今日未完成的 | **日常推荐**，自动跳过已完成的 |
 | `run-pool-pipeline --all --force` | 强制重新执行全部 | 需要覆盖重跑时 |
 | `stop-pipeline <id>` | 停止运行中的流水线 | 误操作或超时 |
 | `list-pipelines` | 列出运行中的流水线 | 查看当前执行状态 |
+| `pipeline-log [date]` | 查看流水线运行历史 | 排查问题、回顾执行记录 |
+| `pipeline-log --id <runId>` | 查看某次运行的详细记录 | 查看耗时、失败等详情 |
 
 ### 执行后 — 结果查看
 

@@ -19,6 +19,7 @@ import {
   dailyInfo,
   stock,
   pool as poolTable,
+  pipelineRun,
 } from '../db/schema.js';
 import { eq, and, sql, desc } from 'drizzle-orm';
 import { VERSION } from '../index.js';
@@ -414,4 +415,49 @@ export async function getSystemStatus() {
     llmConnected,
     uptime: Math.floor(process.uptime()),
   };
+}
+
+// ─── Pipeline Log (#142) ─────────────────────────────────────────
+
+/**
+ * 查询流水线运行记录列表。
+ *
+ * @param date - 可选日期 yyyy-MM-dd，不指定则返回最近 20 条
+ * @returns 流水线运行记录摘要列表
+ */
+export async function listPipelineRuns(date?: string) {
+  const db = getDatabase();
+
+  let query = db
+    .select()
+    .from(pipelineRun)
+    .orderBy(desc(pipelineRun.startedAt))
+    .limit(20);
+
+  if (date) {
+    query = db
+      .select()
+      .from(pipelineRun)
+      .where(eq(pipelineRun.date, date))
+      .orderBy(desc(pipelineRun.startedAt))
+      .limit(20) as typeof query;
+  }
+
+  return query.all();
+}
+
+/**
+ * 查询指定流水线运行的详细记录。
+ *
+ * @param runId - 流水线运行 ID
+ * @returns 流水线运行详情，或 null
+ */
+export async function getPipelineRunDetail(runId: string) {
+  const db = getDatabase();
+  const row = db
+    .select()
+    .from(pipelineRun)
+    .where(eq(pipelineRun.runId, runId))
+    .get();
+  return row ?? null;
 }

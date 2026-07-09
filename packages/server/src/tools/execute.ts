@@ -12,8 +12,8 @@ import * as dailyInfoService from '../services/daily-info.js';
 import * as poolService from '../services/pool.js';
 import { generateDailySummaryV2, printDailySummaryV2 } from '../services/daily-summary-v2.js';
 import { getDatabase } from '../db/index.js';
-import { finalReport } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { finalReport, pipelineRun } from '../db/schema.js';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -95,6 +95,28 @@ function getTodayDate(): string {
   const m = String(local.getUTCMonth() + 1).padStart(2, '0');
   const d = String(local.getUTCDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/**
+ * 生成流水线运行 ID（pool-run 级别）。
+ */
+function generatePoolRunId(): string {
+  const ts = Date.now().toString(36);
+  const rand = Math.random().toString(16).slice(2, 6);
+  return `pool-run-${ts}-${rand}`;
+}
+
+/**
+ * 格式化秒数为可读时长（如 "2分30秒" / "1小时5分"）。
+ */
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${Math.round(totalSeconds)}秒`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  if (minutes < 60) return `${minutes}分${seconds}秒`;
+  const hours = Math.floor(minutes / 60);
+  const remainMin = minutes % 60;
+  return `${hours}小时${remainMin}分`;
 }
 
 /**
@@ -206,6 +228,7 @@ export async function listAllPools() {
  *
  * @param poolIds - 股池 ID 或 ID 数组
  * @param force   - 可选，true 则强制重新执行（跳过缓存检查），默认 false
+ * @param missing - 可选，true 则仅补跑今日未完成的股票，自动跳过已有 final_report 的
  * @returns { success: true, data: { total: number, skipped: number } }
  *
  * @example
@@ -215,8 +238,10 @@ export async function listAllPools() {
  * await runPoolFullPipeline([1, 2, 3]);
  * // 强制重跑
  * await runPoolFullPipeline([1, 2], true);
+ * // 补跑未完成
+ * await runPoolFullPipeline(undefined, false, true);
  */
-export async function runPoolFullPipeline(poolIds: number | number[], force?: boolean) {
+export async function runPoolFullPipeline(poolIds?: number | number[], force?: boolean, missing?: boolean) {
   // ── PID 文件锁：阻止并行实例 ──
   if (!acquirePipelineLock()) {
     return {
@@ -225,59 +250,149 @@ export async function runPoolFullPipeline(poolIds: number | number[], force?: bo
     };
   }
 
-  try {
-    const ids = Array.isArray(poolIds) ? poolIds : [poolIds];
-    let completed = 0;
-    let skipped = 0;
+  const startTime = Date.now();
+  const runId = generatePoolRunId();
+  const targetDate = getTodayDate();
+  const db = getDatabase();
 
+  // --missing 模式无 poolIds 时自动检测所有股池
+  if (missing && (!poolIds || (Array.isArray(poolIds) && poolIds.length === 0))) {
+    const pools = await poolService.listPools();
+    poolIds = pools.map(p => p.id);
+  }
+
+  const ids = poolIds && Array.isArray(poolIds) ? poolIds : (poolIds ? [poolIds] : []);
+  const argsSnapshot = process.argv.slice(2).join(' ') || '';
+
+  // 插入 pipeline_run 记录
+  const modeLabel = missing ? 'missing' : force ? 'force' : 'full';
+  db.insert(pipelineRun).values({
+    runId,
+    date: targetDate,
+    mode: modeLabel,
+    poolIds: JSON.stringify(ids),
+    totalStocks: 0,
+    args: argsSnapshot,
+  }).run();
+
+  let totalCompleted = 0;
+  let totalSkipped = 0;
+  let totalFailed = 0;
+  let poolTotalStocks = 0;
+
+  // 更新 pipeline_run 记录
+  function updateRunStatus(status: string, extra?: Record<string, unknown>) {
+    try {
+      db.update(pipelineRun)
+        .set({
+          status,
+          completedStocks: totalCompleted,
+          failedStocks: totalFailed,
+          skippedStocks: totalSkipped,
+          totalStocks: poolTotalStocks,
+          durationSeconds: (Date.now() - startTime) / 1000,
+          finishedAt: sql`datetime('now')`,
+          ...extra,
+        })
+        .where(eq(pipelineRun.runId, runId))
+        .run();
+    } catch {
+      // 更新失败不影响主流程
+    }
+  }
+
+  try {
     for (const pid of ids) {
       const stocks = await poolService.getPoolStocks(pid);
       if (stocks.length === 0) {
         console.log(`[runPoolFullPipeline] 股池 ${pid} 无股票，跳过`);
         continue;
       }
-      console.log(`[runPoolFullPipeline] 开始股池 ${pid} (${stocks.length} 只股票)`);
+      poolTotalStocks += stocks.length;
 
-      // 断点重开的目标日期：今日（北京时间），流水线每天针对最新交易日运行
-      const targetDate = getTodayDate();
+      // --missing / 非 force 模式：预检已完成的股票，只跑未完成的
+      const pendingStocks: typeof stocks = [];
+      let poolSkipped = 0;
 
-      for (let i = 0; i < stocks.length; i++) {
-        const s = stocks[i];
-        const progress = `[${i + 1}/${stocks.length}]`;
-
-        // 断点重开：检查该股目标日期是否已有 final_report（非 force 模式）
-        if (!force) {
+      if (missing || !force) {
+        for (const s of stocks) {
           const existing = checkExistingFinalReport(s.code, targetDate);
           if (existing) {
-            console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 已有 final_report (date=${existing.date}), 跳过`);
-            skipped++;
-            continue;
+            poolSkipped++;
+            totalSkipped++;
+          } else {
+            pendingStocks.push(s);
           }
         }
+        const poolMsg = `股池 ${pid} (${stocks.length} 只中已完成 ${poolSkipped} 只，待执行 ${pendingStocks.length} 只)`;
+        if (pendingStocks.length === 0) {
+          console.log(`[runPoolFullPipeline] ${poolMsg} → 全部完成，跳过`);
+          continue;
+        }
+        console.log(`[runPoolFullPipeline] 开始 ${poolMsg}`);
+      } else {
+        // force 模式：全部重跑
+        pendingStocks.push(...stocks);
+        console.log(`[runPoolFullPipeline] 开始股池 ${pid} (${stocks.length} 只，强制重跑)`);
+      }
 
+      // ETA 统计
+      let poolDuration = 0;
+      let poolProcessed = 0;
+
+      for (let i = 0; i < pendingStocks.length; i++) {
+        const s = pendingStocks[i];
+        const stockStart = Date.now();
+        const progress = force
+          ? `[${i + 1}/${pendingStocks.length}]`
+          : `[${totalCompleted + 1}/${poolTotalStocks}]`;
+
+        // force 模式仍要过 checkpoint（由 pipeline.runFull 内二次检查决定是否跳过）
         try {
-          await pipelineService.runFullPipeline(s.code, force);
-          completed++;
-          console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 完成`);
+          await pipelineService.runFullPipeline(s.code, !!force);
+          totalCompleted++;
+          const elapsed = (Date.now() - stockStart) / 1000;
+          poolDuration += elapsed;
+          poolProcessed++;
+          console.log(`[runPoolFullPipeline] ${progress} ${s.code} ${s.name} 完成 ✓`);
+
+          // ETA 估算（#141）：有足够样本后显示
+          if (poolProcessed >= 3) {
+            const avgSec = poolDuration / poolProcessed;
+            const remaining = pendingStocks.length - i - 1;
+            const etaSec = avgSec * remaining;
+            const now = new Date();
+            const etaTime = new Date(now.getTime() + etaSec * 1000);
+            const etaStr = `${String(etaTime.getHours()).padStart(2, '0')}:${String(etaTime.getMinutes()).padStart(2, '0')}`;
+            console.log(`  ⏱ 平均 ${avgSec.toFixed(0)}s/只，预计剩余 ${formatDuration(etaSec)}（~${etaStr} 完成）`);
+          }
         } catch (err) {
+          totalFailed++;
           console.warn(`[runPoolFullPipeline] ${progress} ${s.code} 失败:`, (err as Error).message);
         }
       }
-      console.log(`[runPoolFullPipeline] 股池 ${pid} 完成 (完成 ${completed} / 跳过 ${skipped} / 共 ${stocks.length})`);
     }
 
-    // 自动触发每日综述 v2（仅当有股票成功完成时）
-    if (completed > 0) {
+    // ── #76：自动触发每日综述 v2（仅当有股票成功完成时） ──
+    if (totalCompleted > 0) {
       try {
+        console.log(`[runPoolFullPipeline] 流水线完成，自动生成每日综述...`);
         const summary = await generateDailySummaryV2(undefined);
         printDailySummaryV2(summary);
       } catch (err) {
         console.warn(`[runPoolFullPipeline] 生成每日综述失败:`, (err as Error).message);
       }
     }
-    return { success: true as const, data: { total: completed, skipped } };
+
+    const totalDuration = (Date.now() - startTime) / 1000;
+    const completedInfo = `新执行 ${totalCompleted} 只，跳过 ${totalSkipped} 只，失败 ${totalFailed} 只`;
+    console.log(`[runPoolFullPipeline] 全线完成！${completedInfo}，总耗时 ${formatDuration(totalDuration)}`);
+
+    updateRunStatus('completed');
+    return { success: true as const, data: { total: totalCompleted, skipped: totalSkipped, failed: totalFailed } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    updateRunStatus('crashed');
     return { success: false as const, error: { code: 'DB_ERROR', message } };
   } finally {
     releasePipelineLock();

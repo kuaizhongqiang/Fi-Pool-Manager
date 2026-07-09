@@ -564,34 +564,88 @@ program
 program
   .command('run-pool-pipeline')
   .description('对股池所有股票运行完整流水线（支持多个池 ID 串行执行）')
-  .argument('[poolIds...]', '股池 ID（可传多个，如 1 2 3；或用 --all）')
+  .argument('[poolIds...]', '股池 ID（可传多个，如 1 2 3；或用 --all / --missing）')
   .option('--all', '对所有股池串行执行')
   .option('--force', '强制重新执行（跳过缓存检查）')
-  .action(async (poolIds: string[], options: { all?: boolean; force?: boolean }) => {
+  .option('--missing', '补跑模式：仅执行今日未完成的股票（自动识别已完成）')
+  .action(async (poolIds: string[], options: { all?: boolean; force?: boolean; missing?: boolean }) => {
     try {
-      let ids: number[];
-      if (options.all) {
+      let ids: number[] | undefined;
+      if (options.all || options.missing) {
         const pools = await exec.listAllPools();
         ids = pools.map(p => p.id);
-        console.log(`[run-pool-pipeline] 对所有 ${ids.length} 个股池串行执行`);
+        const mode = options.missing ? '补跑' : '全量';
+        console.log(`[run-pool-pipeline] ${mode}模式: 对所有 ${ids.length} 个股池执行`);
       } else {
         ids = (poolIds || []).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
         if (ids.length === 0) {
-          printError('请指定至少一个有效的股池 ID（或使用 --all）');
+          printError('请指定至少一个有效的股池 ID（或使用 --all / --missing）');
           return;
         }
       }
-      const result = await exec.runPoolFullPipeline(ids, options.force);
+      const result = await exec.runPoolFullPipeline(ids, options.force, options.missing);
       if (result.success) {
         const skipped = result.data?.skipped ?? 0;
         const total = result.data?.total ?? 0;
-        if (skipped > 0) {
-          printSuccess(`股池全流水线完成: 新执行 ${total} 只, 跳过 ${skipped} 只（已有 final_report）`);
-        } else {
-          printSuccess(`股池全流水线完成: 共 ${total} 只股票`);
-        }
+        const failed = result.data?.failed ?? 0;
+        const parts = [`新执行 ${total} 只`];
+        if (skipped > 0) parts.push(`跳过 ${skipped} 只`);
+        if (failed > 0) parts.push(`失败 ${failed} 只`);
+        printSuccess(`股池全流水线完成: ${parts.join('，')}`);
       } else {
         printError(result.error?.message ?? '流水线失败');
+      }
+    } catch (err) {
+      printError((err as Error).message);
+    }
+  });
+
+program
+  .command('pipeline-log')
+  .description('查看流水线运行历史')
+  .argument('[date]', '可选日期 yyyy-MM-dd（默认显示最近 20 条）')
+  .option('--id <runId>', '查看指定 runId 的详细记录')
+  .action(async (date?: string, options?: { id?: string }) => {
+    try {
+      if (options?.id) {
+        const detail = await query.getPipelineRunDetail(options.id);
+        if (!detail) {
+          printError('未找到该流水线运行记录');
+          return;
+        }
+        console.log(`\n  📋 流水线运行详情`);
+        console.log(`  ${'─'.repeat(40)}`);
+        console.log(`  ID: ${detail.runId}`);
+        console.log(`  日期: ${detail.date}`);
+        console.log(`  模式: ${detail.mode}`);
+        console.log(`  状态: ${detail.status}`);
+        console.log(`  股池: ${detail.poolIds}`);
+        console.log(`  总股票: ${detail.totalStocks}`);
+        console.log(`  完成: ${detail.completedStocks}`);
+        console.log(`  跳过: ${detail.skippedStocks}`);
+        console.log(`  失败: ${detail.failedStocks}`);
+        if (detail.durationSeconds) console.log(`  耗时: ${Math.round(detail.durationSeconds)}秒`);
+        if (detail.avgStockDuration) console.log(`  平均: ${detail.avgStockDuration.toFixed(1)}秒/只`);
+        if (detail.args) console.log(`  参数: ${detail.args}`);
+        console.log(`  开始: ${detail.startedAt}`);
+        if (detail.finishedAt) console.log(`  结束: ${detail.finishedAt}`);
+      } else {
+        const runs = await query.listPipelineRuns(date);
+        if (runs.length === 0) {
+          console.log('  (无流水线运行记录)');
+          return;
+        }
+        console.log(`\n  📋 流水线运行日志 ${date ? `— ${date}` : ''}`);
+        console.log(`  ${'─'.repeat(50)}`);
+        for (const r of runs) {
+          const icon = r.status === 'completed' ? '✓' : r.status === 'running' ? '▶' : '✗';
+          const dur = r.durationSeconds ? `, ${Math.round(r.durationSeconds)}秒` : '';
+          const avg = r.avgStockDuration ? `, ~${r.avgStockDuration.toFixed(0)}秒/只` : '';
+          console.log(`  ${icon} ${r.runId.slice(0, 24)}`);
+          console.log(`     日期:${r.date} 模式:${r.mode} 状态:${r.status}${dur}${avg}`);
+          console.log(`     进度: ${r.completedStocks}/${r.totalStocks} 完成, 跳过 ${r.skippedStocks}, 失败 ${r.failedStocks}`);
+          console.log();
+        }
       }
     } catch (err) {
       printError((err as Error).message);

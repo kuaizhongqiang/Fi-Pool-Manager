@@ -12,7 +12,8 @@ Fi-Pool-Manager OpenClaw 插件。
 - 股票查询（信息、行情、报告）
 - 分析报告输出（full/overview）
 - 语义搜索
-- 执行分析流水线
+- 执行分析流水线（支持断点重开、`--force` 强制重跑、`--missing` 补跑模式）
+- 运行历史查询（pipeline-log）
 
 ## 开发参考
 

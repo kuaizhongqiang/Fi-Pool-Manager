@@ -551,7 +551,7 @@ const tools: ToolDefinition[] = [
 
   {
     name: 'run_pool_full_pipeline',
-    description: '对指定股池运行完整流水线，支持多池和断点重开（--force 强制重跑）',
+    description: '对指定股池运行完整流水线，支持多池、断点重开和补跑模式',
     inputSchema: {
       type: 'object',
       properties: {
@@ -560,16 +560,18 @@ const tools: ToolDefinition[] = [
             { type: 'number', description: '单个股池 ID' },
             { type: 'array', items: { type: 'number' }, description: '多个股池 ID 数组' },
           ],
-          description: '股池 ID 或 ID 数组',
+          description: '股池 ID 或 ID 数组（--missing 模式可不传）',
         },
         force: { type: 'boolean', description: 'true 则强制重新执行（跳过缓存检查）' },
+        missing: { type: 'boolean', description: 'true 则补跑模式：仅执行今日未完成的股票' },
       },
-      required: ['poolIds'],
     },
     handler: async (args) => {
       const raw = args.poolIds;
-      const ids = Array.isArray(raw) ? raw.map((v: unknown) => parseIntArg(v)) : [parseIntArg(raw)];
-      return _exec.runPoolFullPipeline(ids, args.force === true);
+      const ids = raw !== undefined
+        ? (Array.isArray(raw) ? raw.map((v: unknown) => parseIntArg(v)) : [parseIntArg(raw)])
+        : undefined;
+      return _exec.runPoolFullPipeline(ids, args.force === true, args.missing === true);
     },
   },
 

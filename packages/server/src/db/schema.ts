@@ -17,13 +17,14 @@
  * - daily_summary              每日综述最终报告
  * - config                     系统配置
  * - vec_embedding              向量数据
+ * - pipeline_runs              流水线运行记录（#142/#141）
  *
  * 迁移命令：
  *   npm run db:generate   生成迁移文件
  *   npm run db:migrate    执行迁移
  */
 
-import { sqliteTable, text, integer, real, blob, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, blob, uniqueIndex, index, AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 
 // ─── Pool 股池 ───────────────────────────────────────────────
 
@@ -204,4 +205,29 @@ export const vecEmbedding = sqliteTable('vec_embedding', {
   typeIdx: index('idx_ve_type').on(table.contentType),
   codeIdx: index('idx_ve_code').on(table.contentCode),
   typeCodeDateIdx: index('idx_ve_type_code_date').on(table.contentType, table.contentCode, table.contentDate),
+}));
+
+// ─── PipelineRun 流水线运行记录（#142 pipeline-log / #141 ETA）───
+
+export const pipelineRun = sqliteTable('pipeline_run', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: text('run_id').notNull().unique(), // 如 'pool-run-xxxx'
+  date: text('date').notNull(), // 运行日期 yyyy-MM-dd
+  mode: text('mode').notNull().default('full'), // 'full' | 'force' | 'missing'
+  poolIds: text('pool_ids').notNull().default('[]'), // JSON: 股池 ID 数组
+  totalStocks: integer('total_stocks').notNull().default(0),
+  completedStocks: integer('completed_stocks').notNull().default(0),
+  failedStocks: integer('failed_stocks').notNull().default(0),
+  skippedStocks: integer('skipped_stocks').notNull().default(0),
+  status: text('status').notNull().default('running'), // 'running' | 'completed' | 'cancelled' | 'crashed'
+  durationSeconds: real('duration_seconds'), // 总耗时（秒），完成时写入
+  avgStockDuration: real('avg_stock_duration'), // 平均每只耗时（秒）
+  args: text('args').notNull().default(''), // 启动参数快照
+  startedAt: text('started_at').notNull().default("datetime('now')"),
+  finishedAt: text('finished_at'),
+  createdAt: text('created_at').notNull().default("datetime('now')"),
+}, (table) => ({
+  dateIdx: index('idx_pr_date').on(table.date),
+  statusIdx: index('idx_pr_status').on(table.status),
+  runIdIdx: index('idx_pr_run_id').on(table.runId),
 }));
