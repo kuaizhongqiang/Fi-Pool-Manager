@@ -352,10 +352,20 @@
 
 ```
 入参：
-  poolId: number
+  poolIds?: number | number[]  // 股池 ID（--missing 模式可不传）
+  force?: boolean               // true 则强制重跑（跳过缓存检查）
+  missing?: boolean             // true 则补跑模式：仅执行当日未完成的
 
-返回：{ success: true, data: { total: number } }
+返回：{ success: true, data: { total: number, skipped: number, failed: number } }
 ```
+
+支持断点重开（Checkpoint/Resume）双层策略：
+- 第 1 层（预检）：用 getTodayDate() 快速检查 final_report 是否存在
+- 第 2 层（精检）：Pipeline.runFull() 内 Stage 1 获取真实交易日后再次检查
+- 两层确保非 force 模式下已完成的股票不会触发 LLM 调用
+
+自动记录运行历史到 pipeline_run 表（#142），可通过 pipeline-log 命令查看。
+自动触发每日综述 v2（#76），在 finally 块中确保无论成功/崩溃都执行。
 
 ### refreshData
 

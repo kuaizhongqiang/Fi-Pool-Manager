@@ -16,6 +16,7 @@ import { finalReport, pipelineRun } from '../db/schema.js';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { getTodayDate } from '../utils/date.js';
 
 // ─── PID 文件锁（阻止并行 pipeline 实例）───────────────────────────
 
@@ -84,18 +85,6 @@ function releasePipelineLock(): void {
 }
 
 // ─────────────────────────────────────────────────────────────────
-
-/**
- * 获取今日日期字符串（北京时间，yyyy-MM-dd 格式）。
- */
-function getTodayDate(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() + 8 * 60 * 60 * 1000);
-  const y = local.getUTCFullYear();
-  const m = String(local.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(local.getUTCDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
 
 /**
  * 生成流水线运行 ID（pool-run 级别）。
@@ -343,9 +332,8 @@ export async function runPoolFullPipeline(poolIds?: number | number[], force?: b
       for (let i = 0; i < pendingStocks.length; i++) {
         const s = pendingStocks[i];
         const stockStart = Date.now();
-        const progress = force
-          ? `[${i + 1}/${pendingStocks.length}]`
-          : `[${totalCompleted + 1}/${poolTotalStocks}]`;
+        // #147: 每池独立计数，避免跨池累加误导
+        const progress = `[${i + 1}/${pendingStocks.length}]`;
 
         // force 模式仍要过 checkpoint（由 pipeline.runFull 内二次检查决定是否跳过）
         try {
@@ -373,28 +361,31 @@ export async function runPoolFullPipeline(poolIds?: number | number[], force?: b
       }
     }
 
-    // ── #76：自动触发每日综述 v2（仅当有股票成功完成时） ──
-    if (totalCompleted > 0) {
-      try {
-        console.log(`[runPoolFullPipeline] 流水线完成，自动生成每日综述...`);
-        const summary = await generateDailySummaryV2(undefined);
-        printDailySummaryV2(summary);
-      } catch (err) {
-        console.warn(`[runPoolFullPipeline] 生成每日综述失败:`, (err as Error).message);
-      }
-    }
-
     const totalDuration = (Date.now() - startTime) / 1000;
     const completedInfo = `新执行 ${totalCompleted} 只，跳过 ${totalSkipped} 只，失败 ${totalFailed} 只`;
     console.log(`[runPoolFullPipeline] 全线完成！${completedInfo}，总耗时 ${formatDuration(totalDuration)}`);
 
-    updateRunStatus('completed');
+    // #146: 计算平均耗时并回写
+    const avgStockDuration = totalCompleted > 0
+      ? (Date.now() - startTime) / 1000 / totalCompleted
+      : undefined;
+    updateRunStatus('completed', avgStockDuration ? { avgStockDuration } : undefined);
     return { success: true as const, data: { total: totalCompleted, skipped: totalSkipped, failed: totalFailed } };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     updateRunStatus('crashed');
     return { success: false as const, error: { code: 'DB_ERROR', message } };
   } finally {
+    // #148: 无论成功/崩溃，只要有股票成功完成就生成每日综述
+    if (totalCompleted > 0) {
+      try {
+        console.log(`[runPoolFullPipeline] 流水线结束，自动生成每日综述...`);
+        const summary = await generateDailySummaryV2(undefined);
+        printDailySummaryV2(summary);
+      } catch (err) {
+        console.warn(`[runPoolFullPipeline] 生成每日综述失败:`, (err as Error).message);
+      }
+    }
     releasePipelineLock();
   }
 }

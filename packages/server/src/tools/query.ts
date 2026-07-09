@@ -25,6 +25,7 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import { VERSION } from '../index.js';
 import { existsSync, statSync } from 'fs';
 import { resolve } from 'path';
+import { getTodayDate } from '../utils/date.js';
 
 /**
  * 列出所有股池，附带每个股池中的股票数量。
@@ -184,7 +185,7 @@ export async function getFinalReport(code: string, date: string, mode: 'overview
  */
 export async function checkDataCompleteness(date?: string) {
   const db = getDatabase();
-  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+  const targetDate = date ?? getTodayDate();
 
   // 1. 获取所有股池
   const pools = await poolService.listPools();
@@ -250,7 +251,7 @@ export async function checkDataCompleteness(date?: string) {
  */
 export async function getPoolAnalysisStatus(poolId: number, date?: string) {
   const db = getDatabase();
-  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+  const targetDate = date ?? getTodayDate();
 
   const stocks = await poolService.getPoolStocks(poolId);
   const poolInfo = await poolService.getPoolById(poolId);
@@ -307,7 +308,7 @@ export async function getPoolAnalysisStatus(poolId: number, date?: string) {
  */
 export async function getDailySummaryStatus(date?: string) {
   const db = getDatabase();
-  const targetDate = date ?? new Date().toISOString().slice(0, 10);
+  const targetDate = date ?? getTodayDate();
 
   // 1. 查询 daily_summary
   const summary = db
@@ -428,22 +429,22 @@ export async function getSystemStatus() {
 export async function listPipelineRuns(date?: string) {
   const db = getDatabase();
 
-  let query = db
-    .select()
-    .from(pipelineRun)
-    .orderBy(desc(pipelineRun.startedAt))
-    .limit(20);
-
   if (date) {
-    query = db
+    return db
       .select()
       .from(pipelineRun)
       .where(eq(pipelineRun.date, date))
       .orderBy(desc(pipelineRun.startedAt))
-      .limit(20) as typeof query;
+      .limit(20)
+      .all();
   }
 
-  return query.all();
+  return db
+    .select()
+    .from(pipelineRun)
+    .orderBy(desc(pipelineRun.startedAt))
+    .limit(20)
+    .all();
 }
 
 /**

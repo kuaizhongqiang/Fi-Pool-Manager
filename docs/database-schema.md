@@ -186,6 +186,7 @@ CREATE TABLE final_report (
     full_report   TEXT    NOT NULL DEFAULT '',   -- full 内容
     role_summary  TEXT    NOT NULL DEFAULT '[]', -- JSON: 各角色核心观点
     pipeline_id   TEXT    NOT NULL DEFAULT '',   -- 流水线运行 ID
+    anomaly_score REAL    NOT NULL DEFAULT 1.0, -- 异常偏移值，1=正常，越大越异常
     created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(code, date)
 );
@@ -203,6 +204,72 @@ CREATE INDEX idx_fr_code_date ON final_report(code, date);
   { "role": "舆情分析师", "keyPoint": "近期无重大利空，市场情绪中性偏多" },
   { "role": "风控官", "keyPoint": "关注流动性和板块回调风险" }
 ]
+```
+
+### DailySummaryDetail — 每日异常股票逐维度分析
+
+```sql
+CREATE TABLE daily_summary_detail (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    stock_code      TEXT    NOT NULL,       -- 股票代码
+    date            TEXT    NOT NULL,       -- 'yyyy-MM-dd'
+    dimension       TEXT    NOT NULL,       -- 'price' | 'sentiment' | 'volume' | 'sector'
+    anomaly_desc    TEXT    NOT NULL DEFAULT '',
+    anomaly_score   REAL    NOT NULL DEFAULT 1.0,
+    key_findings    TEXT    NOT NULL DEFAULT '',
+    pipeline_id     TEXT    NOT NULL DEFAULT '',
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(stock_code, date, dimension)
+);
+
+CREATE INDEX idx_dsd_date ON daily_summary_detail(date);
+CREATE INDEX idx_dsd_stock_date ON daily_summary_detail(stock_code, date);
+CREATE INDEX idx_dsd_dimension ON daily_summary_detail(dimension);
+```
+
+### DailySummary — 每日综述最终报告
+
+```sql
+CREATE TABLE daily_summary (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    date            TEXT    NOT NULL UNIQUE, -- 'yyyy-MM-dd'
+    anomaly_count   INTEGER NOT NULL DEFAULT 0,
+    total_stocks    INTEGER NOT NULL DEFAULT 0,
+    full_report     TEXT    NOT NULL DEFAULT '',
+    overview        TEXT    NOT NULL DEFAULT '',
+    pipeline_ids    TEXT    NOT NULL DEFAULT '[]', -- JSON: 关联流水线 ID 列表
+    model_used      TEXT    NOT NULL DEFAULT '',
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_ds_date ON daily_summary(date);
+```
+
+### PipelineRun — 流水线运行记录（#142 pipeline-log）
+
+```sql
+CREATE TABLE pipeline_run (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id            TEXT    NOT NULL UNIQUE,      -- 如 'pool-run-xxxx'
+    date              TEXT    NOT NULL,              -- 运行日期 yyyy-MM-dd
+    mode              TEXT    NOT NULL DEFAULT 'full', -- 'full' | 'force' | 'missing'
+    pool_ids          TEXT    NOT NULL DEFAULT '[]', -- JSON: 股池 ID 数组
+    total_stocks      INTEGER NOT NULL DEFAULT 0,
+    completed_stocks  INTEGER NOT NULL DEFAULT 0,
+    failed_stocks     INTEGER NOT NULL DEFAULT 0,
+    skipped_stocks    INTEGER NOT NULL DEFAULT 0,
+    status            TEXT    NOT NULL DEFAULT 'running', -- 'running' | 'completed' | 'cancelled' | 'crashed'
+    duration_seconds  REAL,                         -- 总耗时（秒）
+    avg_stock_duration REAL,                        -- 平均每只耗时（秒）
+    args              TEXT    NOT NULL DEFAULT '',
+    started_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+    finished_at       TEXT,
+    created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX idx_pr_date ON pipeline_run(date);
+CREATE INDEX idx_pr_status ON pipeline_run(status);
+CREATE INDEX idx_pr_run_id ON pipeline_run(run_id);
 ```
 
 ### Config — 系统配置
@@ -226,7 +293,7 @@ CREATE TABLE config (
 ```sql
 CREATE TABLE vec_embedding (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    content_type    TEXT    NOT NULL,     -- 'analysis' | 'final'
+    content_type    TEXT    NOT NULL,     -- 'analysis' | 'final' | 'daily_detail' | 'daily_summary'
     content_code    TEXT    NOT NULL,     -- 股票代码
     content_date    TEXT    NOT NULL,     -- 报告日期
     content_text    TEXT    NOT NULL,     -- 原始文本（用于溯源）
@@ -255,8 +322,14 @@ pool ─── pool_stock ─── stock
                   analysis_roler
                            │
                      final_report ◄── vec_embedding
-                                       (content_type='final')
+                           │            (content_type='final')
+                           │
+               daily_summary_detail
+                           │
+                     daily_summary ◄── vec_embedding
+                                        (content_type='daily_summary')
 
+pipeline_run（独立表，记录每次运行历史，不参与业务关联）
 config（独立表，键值存储）
 ```
 

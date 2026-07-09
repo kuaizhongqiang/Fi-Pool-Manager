@@ -1,7 +1,7 @@
 # Fi-Pool-Manager 项目综述
 
-> 版本：0.1.0（设计阶段）
-> 最后更新：2026-06-29
+> 版本：0.4.9
+> 最后更新：2026-07-09
 
 ## 项目定位
 
@@ -49,8 +49,9 @@ A 股股池管理服务端。用于管理自定义股票池、获取日行情数
 ## 核心数据流
 
 ```
-数据获取 → 本地分析 → 向量检索 → 舆情获取 → 多角色分析 → 综合报告
-  Stage1     Stage2      Stage3     Stage4       Stage5      Stage6
+数据获取 → 客观报告 → 舆情获取 → 多角色分析 → 综合报告
+  Stage1     Stage2      Stage3      Stage4       Stage5
+（Stage 2/5 内部调用向量检索增强上下文，非独立阶段）
 ```
 
 详见 [流水线设计](concepts/analysis-pipeline.md)。
@@ -108,8 +109,8 @@ fi-pool-manager/
 | 文档 | 说明 |
 |------|------|
 | [概念定义](concepts/concepts.md) | 核心概念 |
-| [工具分类](concepts/tools-overview.md) | 29 个工具，5 个分类 |
-| [数据表设计](concepts/data-tables.md) | 11 张表 |
+| [工具分类](concepts/tools-overview.md) | 20+ 工具，5 个分类 |
+| [数据表设计](concepts/data-tables.md) | 13 张表（含 pipeline_run） |
 | [技术选型](concepts/tech-stack.md) | 技术栈定案 |
 | [API 详细设计](api-design.md) | 接口定义 |
 | [数据库 Schema](database-schema.md) | DDL 定义 |

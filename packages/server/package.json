@@ -1,6 +1,6 @@
 {
   "name": "fi-pool-server",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "Fi-Pool-Manager 核心服务：数据获取、技术分析、LLM 分析引擎、向量检索",
   "type": "module",
   "main": "dist/index.js",
